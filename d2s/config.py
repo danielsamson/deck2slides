@@ -25,6 +25,7 @@ FALLBACK_FAMILY = 'Arial'
 # --- First-line offset ---------------------------------------------------------------------------------------
 # Google puts the first text line some px above/below Chromium. Offset is stored as a fraction of font size and
 # interpolated over CSS line-height; produced by `d2s calibrate` per font. Fallback when a font has no table:
+DY_EXTRAP_MAX_LH = 2.0         # first-line offset is extrapolated (slope -0.5 per unit line height) up to here; measured to 2.0 only
 DY_FALLBACK_PER_FS = 0.0       # px of shift per px of font size (no correction)
 
 # --- Wrapping ------------------------------------------------------------------------------------------------
@@ -42,13 +43,18 @@ ROUND_TEXT_INSET = 0.2929
 MAX_RADIUS_FRACTION = 0.5      # roundRect adj is radius / min(w, h), capped at 0.5
 
 # --- Pictures ------------------------------------------------------------------------------------------------
-PICTURE_MODE = 'mask'          # 'mask': rounded picture element + replaceImage; 'shape': tagged text placeholder + replaceAllShapesWithImage
+PICTURE_MODE = 'auto'          # 'auto': embed pictures in the uploaded PPTX while the budget lasts (opacity first), the rest as mask placeholders;
+                               # 'embed': embed all (downscaled to fit the budget); 'mask': rounded picture element + replaceImage; 'shape': tagged text placeholder + replaceAllShapesWithImage
+UPLOAD_BUDGET_BYTES = 2_900_000   # measured: a 3.03 MB file uploads, 6 MB is refused by the connector (4.2 MB per call, about 3.1 MB for files)
+UPLOAD_RESERVE_BYTES = 200_000    # room for the slide XML, the layouts and the fonts in the file
+EMBED_SCALE = 1.5              # embedded pictures are stored at 1.5 x their size on a 1920 px slide
+EMBED_JPEG_QUALITY = 85
 PLACEHOLDER_PNG_BYTES = 70     # a 1x1 PNG; the real picture replaces it in Slides
 PICTURE_SHADOW = 'native'      # 'native': outerShdw on the picture itself; 'shape': a separate rounded shape behind it (old way)
 PICTURE_ALPHA = False          # alphaModFix on the placeholder picture (the API cannot set image transparency: 'transparency cannot be updated')
 SHADOW_INSET_PX = 1            # a picture's shadow shape is this much smaller on each side so its corners never show
 MAX_PIC_WIDTH_FACTOR = 2.0     # pictures are bundled at most this many times their on-slide width (connector size limit)
-BUNDLE_LIMIT_KB = 850          # Drive connector `create_file` limit is ~0.85 MB per file (measured: 1.1 MB fails)
+BUNDLE_LIMIT_KB = 2900         # connector limit: a 3.03 MB file uploaded, a 6 MB one was refused (4.2 MB per call). An earlier session measured 0.85 MB (1.1 MB failed); that was not reproduced
 
 # --- Clips (GIF) ---------------------------------------------------------------------------------------------
 GIF_MAX_FRAMES = 999           # Slides refuses >= 1000 frames ("Internal error" via API; the editor gives the message)

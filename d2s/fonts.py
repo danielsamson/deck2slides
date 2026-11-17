@@ -61,7 +61,7 @@ class FontDB:
         if not tab: return C.DY_FALLBACK_PER_FS * fs
         tab = sorted(tab); lh = lh or self.natural(fam)
         if lh <= tab[0][0]: d = tab[0][1]
-        elif lh >= tab[-1][0]: d = tab[-1][1]
+        elif lh >= tab[-1][0]: d = tab[-1][1] - 0.5 * (min(lh, C.DY_EXTRAP_MAX_LH) - tab[-1][0]) if lh > tab[-1][0] else tab[-1][1]   # beyond the table, up to DY_EXTRAP_MAX_LH: slope -0.5 per unit (measured to 2.0); above that held
         else:
             for (a, da), (b, db) in zip(tab, tab[1:]):
                 if a <= lh <= b: d = da + (db - da) * (lh - a) / (b - a); break

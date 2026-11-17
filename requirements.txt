@@ -6,3 +6,4 @@ scipy
 fonttools
 brotli
 pytest
+shapely

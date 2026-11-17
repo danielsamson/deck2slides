@@ -51,6 +51,55 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     const geom = (e, R) => { const b = e.getBoundingClientRect(), w = e.offsetWidth === undefined ? b.width : e.offsetWidth, h = e.offsetHeight === undefined ? b.height : e.offsetHeight; return { cx: b.left + b.width / 2 - R.left, cy: b.top + b.height / 2 - R.top, w, h, rot: rotOf(e) }; };
     const shadow = cs => { const s = cs.boxShadow; if (!s || s === 'none') return null; const c = col(s); const n = s.replace(/rgba?\([^)]+\)/, '').trim().split(/\s+/).map(parseFloat); return { c, x: n[0], y: n[1], blur: n[2] }; };
     const fam = s => s.fontFamily.split(',')[0].replace(/['"]/g, '').trim();
+    const splitTop = str => { const out = []; let d = 0, cur = ''; for (const ch of str) { if (ch === '(') d++; if (ch === ')') d--; if (ch === ',' && d === 0) { out.push(cur.trim()); cur = ''; } else cur += ch; } if (cur.trim()) out.push(cur.trim()); return out; };
+    const gradOf = (cs, g, warn) => {
+      const bi = cs.backgroundImage; if (!bi || bi === 'none') return null;
+      if (splitTop(bi).length > 1) { warn('several background layers: only dropped'); return null; }
+      const m = /^(repeating-)?(linear|radial)-gradient\((.*)\)$/s.exec(bi.trim()); if (!m || m[1]) { warn('gradient type not supported'); return null; }
+      const parts = splitTop(m[3]); let angle = 180, i = 0; const kind = m[2];
+      if (kind === 'linear') {
+        if (/deg$/.test(parts[0])) { angle = parseFloat(parts[0]); i = 1; }
+        else if (/^to /.test(parts[0])) { const mp = { 'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270, 'to top right': 45, 'to right top': 45, 'to bottom right': 135, 'to right bottom': 135, 'to bottom left': 225, 'to left bottom': 225, 'to top left': 315, 'to left top': 315 }; angle = mp[parts[0]] !== undefined ? mp[parts[0]] : 180; i = 1; }
+      } else if (!/^rgba?\(/.test(parts[0])) i = 1;
+      const rad = angle * Math.PI / 180, len = kind === 'linear' ? Math.abs(g.w * Math.sin(rad)) + Math.abs(g.h * Math.cos(rad)) : Math.max(g.w, g.h) / 2;
+      let stops = parts.slice(i).map(p => { const mm = /^(rgba?\([^)]*\))\s*(.*)$/.exec(p); if (!mm) return null; const c = col(mm[1]); let pos = null; if (mm[2]) { pos = parseFloat(mm[2]); if (mm[2].includes('px')) pos = pos / len * 100; } return { c, pos }; }).filter(Boolean);
+      if (stops.length < 2) return null;
+      if (stops[0].pos === null) stops[0].pos = 0; if (stops[stops.length - 1].pos === null) stops[stops.length - 1].pos = 100;
+      for (let k = 1; k < stops.length - 1; k++) if (stops[k].pos === null) { let a = k - 1, b = k + 1; while (stops[b].pos === null) b++; stops[k].pos = stops[a].pos + (stops[b].pos - stops[a].pos) * (k - a) / (b - a); }
+      return { kind, angle, stops };
+    };
+    const clipOf = (cs, g, warn) => {
+      const c = cs.clipPath; if (!c || c === 'none') return null;
+      const dim = (v, L) => v.endsWith('%') ? parseFloat(v) / 100 : parseFloat(v) / L;
+      let m = /^polygon\((.*)\)$/s.exec(c);
+      if (m) { const ps = splitTop(m[1]); const st = /^(nonzero|evenodd)$/.test(ps[0]) ? 1 : 0; return { kind: 'poly', pts: ps.slice(st).map(q => { const [a, b] = q.trim().split(/\s+/); return [dim(a, g.w), dim(b, g.h)]; }) }; }
+      m = /^(circle|ellipse)\((.*)\)$/s.exec(c);
+      if (m) {
+        const [spec, at] = m[2].split(/\s+at\s+/); const [px, py] = (at || '50% 50%').trim().split(/\s+/);
+        const cx = dim(px, g.w), cy = dim(py || '50%', g.h); const sp = (spec || '').trim().split(/\s+/).filter(Boolean);
+        if (m[1] === 'circle') { if (!sp.length || !/^[\d.]+(%|px)$/.test(sp[0])) { warn('circle() radius keyword not supported'); return null; } const r = sp[0].endsWith('%') ? parseFloat(sp[0]) / 100 * Math.sqrt((g.w * g.w + g.h * g.h) / 2) : parseFloat(sp[0]); return { kind: 'ellipse', cx, cy, rx: r / g.w, ry: r / g.h }; }
+        if (sp.length < 2 || !/^[\d.]+(%|px)$/.test(sp[0])) { warn('ellipse() radius keyword not supported'); return null; }
+        return { kind: 'ellipse', cx, cy, rx: dim(sp[0], g.w), ry: dim(sp[1], g.h) };
+      }
+      m = /^inset\((.*)\)$/s.exec(c);
+      if (m) { const [ins, rnd] = m[1].split(/\s+round\s+/); const v = ins.trim().split(/\s+/); const t = v[0], r = v[1] || t, b = v[2] || t, l = v[3] || r;
+        const T = dim(t, g.h), Rr = 1 - dim(r, g.w), Bb = 1 - dim(b, g.h), L = dim(l, g.w);
+        if (rnd) warn('inset() with round drawn square'); return { kind: 'poly', pts: [[L, T], [Rr, T], [Rr, Bb], [L, Bb]] }; }
+      warn('clip-path type not supported'); return null;
+    };
+    const ovOf = (el, sec, R, g) => {
+      const out = []; let inheritR = 0;
+      for (let a = el.parentElement; a && a !== sec; a = a.parentElement) {
+        const c2 = getComputedStyle(a); if (!(/hidden|clip/.test(c2.overflowX) || /hidden|clip/.test(c2.overflowY))) continue;
+        const b = a.getBoundingClientRect(), bl = parseFloat(c2.borderLeftWidth), bt = parseFloat(c2.borderTopWidth), br = parseFloat(c2.borderRightWidth), bb = parseFloat(c2.borderBottomWidth);
+        const box = { x0: b.left - R.left + bl, y0: b.top - R.top + bt, x1: b.right - R.left - br, y1: b.bottom - R.top - bb };
+        let r = c2.borderTopLeftRadius.includes('%') ? Math.min(b.width, b.height) * parseFloat(c2.borderTopLeftRadius) / 100 : parseFloat(c2.borderTopLeftRadius) || 0; box.r = Math.max(0, r - Math.max(bl, bt));
+        const ex = g.cx - g.w / 2 < box.x0 - 0.5 || g.cy - g.h / 2 < box.y0 - 0.5 || g.cx + g.w / 2 > box.x1 + 0.5 || g.cy + g.h / 2 > box.y1 + 0.5;
+        if (ex) out.push(box);
+        else if (box.r > 0.5 && Math.abs(g.cx - g.w / 2 - box.x0) < 1 && Math.abs(g.cy - g.h / 2 - box.y0) < 1 && Math.abs(g.w - (box.x1 - box.x0)) < 1 && Math.abs(g.h - (box.y1 - box.y0)) < 1) inheritR = Math.max(inheritR, box.r);
+      }
+      return { out, inheritR };
+    };
     let svgN = 0;
     return [...document.querySelectorAll('section')].map((sec, si) => {
       const R = sec.getBoundingClientRect(); const warns = []; const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), radius: 0, bg: 1 }];
@@ -97,7 +146,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       while ((el = ew.nextNode())) {
         const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
         const g = geom(el, R), op = opOf(el); if (!g.w && !g.h) continue;
-        { const w = []; if (cs.backgroundImage && cs.backgroundImage !== 'none' && el.tagName !== 'IMG') w.push('background-image/gradient dropped'); if (cs.clipPath !== 'none') w.push('clip-path dropped'); if (cs.filter !== 'none') w.push('filter (' + cs.filter.split('(')[0] + ') dropped'); if (cs.mixBlendMode !== 'normal') w.push('mix-blend-mode dropped'); if (cs.overflow === 'hidden' && [...el.children].some(c => { const b = c.getBoundingClientRect(), e = el.getBoundingClientRect(); return b.width && (b.left < e.left - 0.5 || b.top < e.top - 0.5 || b.right > e.right + 0.5 || b.bottom > e.bottom + 0.5); })) w.push('overflow:hidden clips a child (clip not reproduced)'); if (+cs.opacity < 1 && el.children.length > 1) w.push('group opacity is applied per child (overlaps look darker)'); if (['l', 't'].some(k => ({ l: cs.borderLeftStyle, t: cs.borderTopStyle })[k] === 'double')) w.push('double border drawn as solid');
+        { const w = [];  if (cs.filter !== 'none') w.push('filter (' + cs.filter.split('(')[0] + ') dropped'); if (cs.mixBlendMode !== 'normal') w.push('mix-blend-mode dropped'); if (+cs.opacity < 1 && el.children.length > 1) w.push('group opacity is applied per child (overlaps look darker)');
           if (w.length) warns.push(el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : '') + ': ' + w.join(', ')); }
         const pad = { l: parseFloat(cs.paddingLeft), r: parseFloat(cs.paddingRight), t: parseFloat(cs.paddingTop), b: parseFloat(cs.paddingBottom) };
         const bw = { l: parseFloat(cs.borderLeftWidth), r: parseFloat(cs.borderRightWidth), t: parseFloat(cs.borderTopWidth), b: parseFloat(cs.borderBottomWidth) };
@@ -107,14 +156,18 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         const uniform = vis('l') && vis('r') && vis('t') && vis('b') && bw.l === bw.r && bw.l === bw.t && bw.l === bw.b;
         const rpct = cs.borderTopLeftRadius.includes('%'); const rv = parseFloat(cs.borderTopLeftRadius) || 0; const ell = rpct && rv >= 50 && Math.abs(g.w - g.h) > 1;
         let radius = rpct ? Math.min(g.w, g.h) * Math.min(rv, 50) / 100 : rv;
+        const gwarn = m => warns.push(el.tagName.toLowerCase() + ': ' + m); const grad = gradOf(cs, g, gwarn), cpath = clipOf(cs, g, gwarn), ov = ovOf(el, sec, R, g);
+        if (ov.inheritR > radius) radius = ov.inheritR;
+        const ovclip = ov.out.length ? ov.out : null;
         const sh = shadow(cs);
         if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op }); continue; }
         if (el.tagName === 'IMG') {
-          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, ...g });
+          { const ibg = col(cs.backgroundColor); if (ibg && ibg.a > 0) items.push({ type: 'shape', ...g, op, radius, ell, fill: ibg, grad: null, stroke: null, shadow: null }); }
+          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, cpath, ovclip, ...g });
         } else {
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
-          if ((bg && bg.a > 0) || uniform || hasText) {
-            const it = { type: 'shape', ...g, op, radius, ell, fill: bg && bg.a > 0 ? bg : null, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null } : null, shadow: sh, pad, bw };
+          if ((bg && bg.a > 0) || grad || uniform || hasText) {
+            const it = { type: 'shape', ...g, op, radius, ell, fill: bg && bg.a > 0 && !grad ? bg : null, grad, cpath, ovclip, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null, cmpd: bst.l === 'double' ? 'dbl' : null } : null, shadow: sh, pad, bw };
             if (hasText) it.text = textOf(el, cs, g);
             items.push(it);
           }

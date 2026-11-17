@@ -12,6 +12,7 @@ from pptx.oxml.ns import qn
 from . import config as C
 from .units import emu, hexc, rot_vec
 from .fonts import FontDB
+from . import geomclip
 PT = C.PT_PER_PX
 FDB = FontDB({})          # replaced in build()
 
@@ -24,12 +25,37 @@ def color(parent, c, op=1.0):
     sf = E('a:solidFill', parent); s = E('a:srgbClr', sf, val=hexc(c)); a = c.get('a', 1) * op
     if a < 0.999: E('a:alpha', s, val=int(round(a * 100000)))
     return sf
+def gradfill(parent, g, op=1.0):
+    gf = E('a:gradFill', parent, rotWithShape='1'); gl = E('a:gsLst', gf)
+    for st in g['stops']:
+        gs = E('a:gs', gl, pos=int(round(max(0, min(100, st['pos'])) * 1000))); sc = E('a:srgbClr', gs, val=hexc(st['c']))
+        a = st['c'].get('a', 1) * op
+        if a < 0.999: E('a:alpha', sc, val=int(round(a * 100000)))
+    if g['kind'] == 'linear': E('a:lin', gf, ang=int(round(((g['angle'] - 90) % 360) * 60000)), scaled='0')
+    else: pth = E('a:path', gf, path='circle'); E('a:fillToRect', pth, l=50000, t=50000, r=50000, b=50000)
+    return gf
+
 def shadow(spPr, sh, op=1.0):
     if not sh or not sh['c'] or sh['c']['a'] * op <= 0: return
     ef = E('a:effectLst', spPr)
     o = E('a:outerShdw', ef, blurRad=emu(sh['blur']), dist=emu(math.hypot(sh['x'], sh['y'])), dir=int(round((math.degrees(math.atan2(sh['y'], sh['x'])) % 360) * 60000)), algn='ctr', rotWithShape='0')
     s = E('a:srgbClr', o, val=hexc(sh['c'])); E('a:alpha', s, val=int(round(sh['c']['a'] * op * 100000)))
-def geom(spPr, w, h, radius, ell=False):
+def custgeom(spPr, subpaths):
+    S = 100000
+    for g in spPr.findall(qn('a:prstGeom')): spPr.remove(g)
+    cg = E('a:custGeom'); E('a:avLst', cg); E('a:gdLst', cg); E('a:ahLst', cg); E('a:cxnLst', cg); E('a:rect', cg, l='0', t='0', r='r', b='b'); pl = E('a:pathLst', cg)
+    pt = lambda parent, x, y: E('a:pt', parent, x=int(round(x * S)), y=int(round(y * S)))
+    for sp in subpaths:
+        path = E('a:path', pl, w=S, h=S)
+        for c in sp:
+            if c[0] == 'M': pt(E('a:moveTo', path), c[1], c[2])
+            elif c[0] == 'L': pt(E('a:lnTo', path), c[1], c[2])
+            elif c[0] == 'C': cb = E('a:cubicBezTo', path); pt(cb, c[1], c[2]); pt(cb, c[3], c[4]); pt(cb, c[5], c[6])
+            else: E('a:close', path)
+    spPr.find(qn('a:xfrm')).addnext(cg); return cg
+
+def geom(spPr, w, h, radius, ell=False, cust=None):
+    if cust: return custgeom(spPr, cust)
     for g in spPr.findall(qn('a:prstGeom')): spPr.remove(g)
     m = min(w, h)
     if radius <= 0.5: g = E('a:prstGeom', None, prst='rect'); E('a:avLst', g)
@@ -95,8 +121,15 @@ def text_body(sp, it, ins, forced):
 def add_shape(slide, it):
     t = it.get('text'); op = it.get('op', 1)
     if t and all(r.get('br') or r['color']['a'] * op <= 0 for r in t['runs']): t = None
-    fill, stroke = it.get('fill'), it.get('stroke')
-    if not (fill or stroke or t): return None
+    _pad, _bw = it.get('pad') or {}, it.get('bw') or {}
+    _inner_h = it['h'] - sum(_pad.get(k, 0) + _bw.get(k, 0) for k in ('t', 'b'))
+    if t and t.get('lines') == 1 and t.get('lh') and t['lh'] > C.DY_EXTRAP_MAX_LH and abs(_inner_h - t['lh'] * t['fs']) < 3:
+        # 'line-height equals the box height' centring idiom: centre one natural-height line instead (does not depend on calibration at large line heights)
+        t = dict(t, lh=None, anchor='middle'); it = dict(it, text=t)
+    fill, stroke, grd = it.get('fill'), it.get('stroke'), it.get('grad')
+    if not (fill or stroke or t or grd): return None
+    cust = geomclip.cust_for(it)
+    if cust == 'empty': return None
     cx, cy, w, h, rot = it['cx'], it['cy'], it['w'], it['h'], it['rot']
     pad, bw = it.get('pad') or dict(l=0, r=0, t=0, b=0), it.get('bw') or dict(l=0, r=0, t=0, b=0)
     ins = [pad['l'] + bw['l'], pad['t'] + bw['t'], pad['r'] + bw['r'], pad['b'] + bw['b']]
@@ -112,9 +145,9 @@ def add_shape(slide, it):
         single = t['lines'] == 1
         extra = 0
         if single or forced or t.get('tight'): extra = max(C.WIDEN_MIN_PX, C.WIDEN_FRACTION * (w - ins[0] - ins[2])) + (-ls_min * t['maxChars'] if ls_min < 0 else 0)
-        elif not fill and not stroke: extra = C.WIDEN_MULTILINE_PX
+        elif not fill and not stroke and not grd: extra = C.WIDEN_MULTILINE_PX
         if t.get('over', 0) > 0.5: extra += t['over']          # text sticks out of its box in the browser (nowrap, long word): Google would wrap it
-        if fill or stroke:      # keep the shape; make room inside it
+        if fill or stroke or grd:      # keep the shape; make room inside it
             if t['anchor'] == 'middle':
                 if shift > 0: ins[1] += 2 * shift
                 else: ins[3] += -2 * shift
@@ -128,15 +161,17 @@ def add_shape(slide, it):
             dx, dyy = rot_vec(ox, shift, rot); cx += dx; cy += dyy; w += extra
     sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - w / 2), emu(cy - h / 2), max(1, emu(w)), max(1, emu(h)))
     if abs(rot) > 0.01: sp.rotation = rot
-    spPr = strip(sp); geom(spPr, w, h, radius, it.get('ell', False))
-    if fill: color(spPr, fill, op)
+    spPr = strip(sp); geom(spPr, w, h, radius, it.get('ell', False), cust)
+    if grd: gradfill(spPr, grd, op)
+    elif fill: color(spPr, fill, op)
     else: E('a:noFill', spPr)
     ln = E('a:ln', spPr)
     if stroke:
         ln.set('w', str(emu(stroke['w']))); color(ln, stroke['c'], op)
+        if stroke.get('cmpd'): ln.set('cmpd', stroke['cmpd'])
         if stroke.get('dash'): E('a:prstDash', ln, val='dash' if stroke['dash'] == 'dash' else 'sysDot')
     else: E('a:noFill', ln)
-    if fill: shadow(spPr, it.get('shadow'), op)
+    if fill or grd: shadow(spPr, it.get('shadow'), op)
     txt = ''
     if t:
         txt = text_body(sp, dict(it, text=t), ins, forced)
@@ -217,7 +252,53 @@ def _placeholder_png():
         import io; b = io.BytesIO(); Image.new('RGBA', (1, 1), (255, 255, 255, 0)).save(b, 'PNG'); _PLACEHOLDER = b.getvalue()
     return _PLACEHOLDER
 
-def add_picture_mask(slide, it, path, slide_id, n):
+def _embed_data(path, pw, ph, method, scale):
+    """-> (bytes, mime, srcRect (l,t,r,b fractions) or None) for a picture shown in a pw x ph box, or None (GIFs stay placeholders)."""
+    if path.lower().endswith('.gif'): return None
+    import io
+    with Image.open(path) as im0:
+        im = im0.convert('RGBA') if (im0.mode in ('RGBA', 'LA') or 'transparency' in im0.info or im0.mode == 'P') else im0.convert('RGB'); W, H = im.size
+    crop = None; cw, ch = W, H
+    if method == 'CENTER_CROP' and abs((pw / ph) / (W / H) - 1) > 0.005:
+        if (pw / ph) > (W / H): ch = W * ph / pw; t = (H - ch) / 2; crop = (0.0, t / H, 0.0, t / H)
+        else: cw = H * pw / ph; l = (W - cw) / 2; crop = (l / W, 0.0, l / W, 0.0)
+    k = min(1.0, pw * scale / cw)
+    if k < 0.999: im = im.resize((max(1, round(W * k)), max(1, round(H * k))), Image.LANCZOS)
+    b = io.BytesIO()
+    if im.mode == 'RGBA' and im.getchannel('A').getextrema()[0] < 255: im.save(b, 'PNG', optimize=True); mime = 'image/png'
+    else: im.convert('RGB').save(b, 'JPEG', quality=C.EMBED_JPEG_QUALITY, optimize=True); mime = 'image/jpeg'
+    return b.getvalue(), mime, crop
+
+def plan_embeds(data, picture_mode):
+    """Which picture items are embedded in the PPTX: set of (slide id, item index). Pictures that need opacity come first, then the
+    smallest; stops when UPLOAD_BUDGET_BYTES - UPLOAD_RESERVE_BYTES would be exceeded (same picture at the same size is counted once)."""
+    if picture_mode not in ('auto', 'embed'): return set(), 1.0
+    budget = C.UPLOAD_BUDGET_BYTES - C.UPLOAD_RESERVE_BYTES; cands = []
+    for d in data:
+        for i, it in enumerate(d['items']):
+            if it['type'] in ('img', 'svg') and it.get('src') and os.path.exists(it['src']):
+                cands.append((d['id'], i, it))
+    def sizes(scale):
+        out = []
+        for sid, i, it in cands:
+            fit = 'fill' if it['type'] == 'svg' else it.get('fit', 'fill'); method = 'CENTER_CROP' if fit in ('cover', 'fill') else 'CENTER_INSIDE'
+            e = _embed_data(it['src'], it['w'], it['h'], method, scale)
+            if e: out.append(((it['src'], round(it['w']), round(it['h']), method), len(e[0]), it.get('op', 1) < 0.999, sid, i))
+        return out
+    scale = C.EMBED_SCALE
+    if picture_mode == 'embed':
+        while scale > 0.15:
+            sz = sizes(scale); tot = sum({k: n for k, n, *_ in sz}.values())
+            if tot <= budget: break
+            scale *= 0.8
+        return {(sid, i) for *_, sid, i in sz}, scale
+    sz = sorted(sizes(scale), key=lambda r: (not r[2], r[1])); chosen = set(); seen = {}; total = 0
+    for key, n, needs, sid, i in sz:
+        add = 0 if key in seen else n
+        if total + add <= budget: total += add; seen[key] = n; chosen.add((sid, i))
+    return chosen, scale
+
+def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     """Picture element with the right box, rotation and rounded-rectangle mask, holding a 1x1 placeholder. The real
     picture is swapped in by Slides (replaceImage, CENTER_CROP for cover, CENTER_INSIDE for contain) so rounded
     corners, cropping and alpha are the editor's own and the file never needs pre-cut pictures."""
@@ -233,9 +314,10 @@ def add_picture_mask(slide, it, path, slide_id, n):
     if fit == 'contain': s = min(cw / nw, ch / nh); pw, ph = nw * s, nh * s
     else: pw, ph = cw, ch
     method = 'CENTER_CROP' if fit in ('cover', 'fill') and abs(1 - (pw / ph) / (nw / nh)) > 0.005 else 'CENTER_INSIDE'
+    emb = _embed_data(path, pw, ph, method, embed_scale) if embed_scale else None
     key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]
-    a = ASSETS.setdefault(key, dict(file=path, mime='image/gif' if path.lower().endswith('.gif') else 'image/jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'image/png', maxw=0))
-    a['maxw'] = max(a['maxw'], pw)
+    if not emb: a = ASSETS.setdefault(key, dict(file=path, mime='image/gif' if path.lower().endswith('.gif') else 'image/jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'image/png', maxw=0))
+    if not emb: a['maxw'] = max(a['maxw'], pw)
     if it.get('shadow') and C.PICTURE_SHADOW == 'shape':
         c = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - pw / 2 + C.SHADOW_INSET_PX), emu(cy - ph / 2 + C.SHADOW_INSET_PX), emu(pw - 2 * C.SHADOW_INSET_PX), emu(ph - 2 * C.SHADOW_INSET_PX))
         if abs(rot) > 0.01: c.rotation = rot
@@ -244,14 +326,35 @@ def add_picture_mask(slide, it, path, slide_id, n):
         tb = c._element.find(qn('p:txBody'))
         for chd in list(tb): tb.remove(chd)
         E('a:bodyPr', tb); E('a:lstStyle', tb); E('a:p', tb)
-    pic = slide.shapes.add_picture(io.BytesIO(_placeholder_png()), emu(cx - pw / 2), emu(cy - ph / 2), max(1, emu(pw)), max(1, emu(ph)))
+    pic = slide.shapes.add_picture(io.BytesIO(emb[0] if emb else _placeholder_png()), emu(cx - pw / 2), emu(cy - ph / 2), max(1, emu(pw)), max(1, emu(ph)))
+    if emb and emb[2]:
+        sr = E('a:srcRect', None, l=int(emb[2][0] * 100000), t=int(emb[2][1] * 100000), r=int(emb[2][2] * 100000), b=int(emb[2][3] * 100000))
+        bf = pic._element.find(qn('p:blipFill')); bf.find(qn('a:blip')).addnext(sr)
     if abs(rot) > 0.01: pic.rotation = rot
-    geom(pic._element.spPr, pw, ph, radius)
+    if abs(pw - it['w']) < 1 and abs(ph - it['h']) < 1: cust = geomclip.cust_for(it)
+    elif it.get('radius', 0) > 0.5 and abs(rot) < 0.01:      # contain: the picture is smaller than its element; only the element's rounded corners clip it (no preset rounding on the smaller picture)
+        radius = 0
+        ex, ey = it['cx'], it['cy']; cust = geomclip.cust_for(dict(it, cx=cx, cy=cy, w=pw, h=ph, radius=0, cpath=None, ell=False, ovclip=[dict(x0=ex - it['w'] / 2, y0=ey - it['h'] / 2, x1=ex + it['w'] / 2, y1=ey + it['h'] / 2, r=it['radius'])]))
+    else: cust = None
+    if cust == 'empty': pic._element.getparent().remove(pic._element); return None
+    if isinstance(cust, list) and emb and abs(rot) < 0.01:
+        # Google fits a clipped picture to the bounding box of the clip path, not to the picture frame: make the frame that box and crop the image to match
+        pts = [(c[i], c[i + 1]) for sp in cust for c in sp if c[0] != 'Z' for i in range(1, len(c) - 1, 2)]
+        bx0, bx1, by0, by1 = min(p[0] for p in pts), max(p[0] for p in pts), min(p[1] for p in pts), max(p[1] for p in pts)
+        if bx1 - bx0 > 0.001 and by1 - by0 > 0.001 and (bx0 > 0.002 or by0 > 0.002 or bx1 < 0.998 or by1 < 0.998):
+            l0, t0, r0, b0 = emb[2] or (0.0, 0.0, 0.0, 0.0); vw, vh = 1 - l0 - r0, 1 - t0 - b0
+            for old in pic._element.find(qn('p:blipFill')).findall(qn('a:srcRect')): old.getparent().remove(old)
+            sr = E('a:srcRect', None, l=int((l0 + bx0 * vw) * 100000), t=int((t0 + by0 * vh) * 100000), r=int((r0 + (1 - bx1) * vw) * 100000), b=int((b0 + (1 - by1) * vh) * 100000))
+            pic._element.find(qn('p:blipFill')).find(qn('a:blip')).addnext(sr)
+            pic.left, pic.top, pic.width, pic.height = emu(cx - pw / 2 + bx0 * pw), emu(cy - ph / 2 + by0 * ph), max(1, emu((bx1 - bx0) * pw)), max(1, emu((by1 - by0) * ph))
+            cust = [[(c[0],) + tuple((c[i] - (bx0 if i % 2 else bx0)) / (bx1 - bx0) if i % 2 == 1 else (c[i] - by0) / (by1 - by0) for i in range(1, len(c))) if c[0] != 'Z' else c for c in sp] for sp in cust]
+            pw, ph = (bx1 - bx0) * pw, (by1 - by0) * ph
+    geom(pic._element.spPr, pw, ph, radius, False, cust)
     if it.get('shadow') and C.PICTURE_SHADOW == 'native': shadow(pic._element.spPr, it['shadow'], it.get('op', 1))
-    if C.PICTURE_ALPHA and it.get('op', 1) < 0.999:
+    if (emb or C.PICTURE_ALPHA) and it.get('op', 1) < 0.999:
         blip = pic._element.find('.//' + qn('a:blip')); E('a:alphaModFix', blip, amt=int(round(it['op'] * 100000)))
     tag = '%s.%d.%s' % (slide_id, n, key); pic._element.nvPicPr.cNvPr.set('descr', tag); pic.name = tag
-    ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
+    if not emb: ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
     return pic
 
 def add_line(slide, it):
@@ -292,32 +395,33 @@ def slim_zip(path):
 
 def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None):
     global FDB; FDB = fdb; ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
-    data = json.load(open(src + '/slides.json'))
+    data = json.load(open(src + '/slides.json')); embeds, escale = plan_embeds(data, picture_mode)
     prs = Presentation(); prs.slide_width = Emu(C.SLIDE_EMU[0]); prs.slide_height = Emu(C.SLIDE_EMU[1])
     from pptx.dml.color import RGBColor
     for d in data:
         if only and d['id'] not in only: continue
         slide = prs.slides.add_slide(prs.slide_layouts[6]); npic = 0
         for ph in list(slide.placeholders): ph._element.getparent().remove(ph._element)
-        def picture(it, name, force_fit=None):
+        def picture(it, name, force_fit=None, idx=None):
             nonlocal npic
             path = it['src']
             if it['type'] == 'clip' and it.get('gif'): path = it['gif']
             it = dict(it, fit=force_fit or it.get('fit', 'fill'))
-            if picture_mode == 'mask': p = add_picture_mask(slide, it, path, d['id'], npic); npic += 1
+            if picture_mode in ('mask', 'auto', 'embed'): p = add_picture_mask(slide, it, path, d['id'], npic, escale if (d['id'], idx) in embeds else None); npic += 1
             else: p = add_picture_shape(slide, it, path, src)
             return p
-        for it in d['items']:
+        for idx, it in enumerate(d['items']):
             ty = it['type']
             if ty == 'shape':
                 if it.get('bg'):
                     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = RGBColor(round(it['fill']['r']), round(it['fill']['g']), round(it['fill']['b']))
                 else: add_shape(slide, it)
-            elif ty in ('img', 'clip'): picture(it, 'Picture')
-            elif ty == 'svg': picture(it, 'Drawing', 'fill')
+            elif ty in ('img', 'clip'): picture(it, 'Picture', None, idx)
+            elif ty == 'svg': picture(it, 'Drawing', 'fill', idx)
             elif ty == 'line': add_line(slide, it)
             elif ty == 'link':
                 sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(it['cx'] - it['w'] / 2), emu(it['cy'] - it['h'] / 2), emu(it['w']), emu(it['h']))
                 spPr = strip(sp); E('a:noFill', spPr); ln = E('a:ln', spPr); E('a:noFill', ln); sp.click_action.hyperlink.address = it['href']; sp.name = 'Link'
     slim(prs); prs.save(out); slim_zip(out)
+    print('pictures embedded in the PPTX: %d (scale %.2f); left as placeholders for replaceImage: %d' % (len(embeds), escale, len(ELEMENTS)))
     json.dump(dict(mode=picture_mode, assets=ASSETS, elements=ELEMENTS, clips=CLIPS), open(src + '/manifest.json', 'w'), indent=1)

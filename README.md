@@ -11,7 +11,7 @@ How: lay every slide out in headless Chromium at 1920x1080 (`js/extract.cjs`) ->
 
 Verified against Google in the last session (Inter and Bricolage Grotesque for the feature deck; Bricolage, Instrument Sans, Inter and
 Fredoka for the pitch deck regression). Numbers are in "Test results" below. **Not verified:** other fonts, animated GIF playback,
-GIFs over 0.85 MB (link route), inline SVG pictures, the pitch deck with its real pictures (only text and shapes were compared),
+GIFs over the upload cap (link route), inline SVG pictures, the pitch deck with its real pictures (only text and shapes were compared),
 slides 1-5, 8-9, 12-14, 17-23, 25-26, 28 of the pitch deck after the final code change (they were compared on an earlier build only).
 
 Offline regression: the pitch deck (28 slides) rebuilt with this package plus `examples/pitch-legacy-calibration.json` gives 819 shapes,
@@ -19,7 +19,7 @@ Offline regression: the pitch deck (28 slides) rebuilt with this package plus `e
 
 **Known constraint:** file-reference uploads (Drive `create_file` with `base64Content = sha256:<hash>:<absolute path>`) work in some
 sessions and not others; when they do not, a session that has them must do the upload. When they work, the file must sit **inside the
-session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 2.1 MB file uploaded fine (the old 0.85 MB figure was not reproduced; the real limit is not found). Hand-typed base64 is not dependable.
+session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 3.03 MB file uploaded fine and a 6 MB one was refused by the connector (4.2 MB per call); the old 0.85 MB figure was wrong. Hand-typed base64 is not dependable.
 
 **Other measured constraints:** the Slides MCP rate-limits thumbnail reads ("Expensive read requests per minute", about 27 in a
 minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
@@ -28,42 +28,24 @@ several times; check every download is a valid PNG).
 ## What works, what does not (route A, plain version)
 
 **Works and was checked against Google:** text (position, size, colour, weights 100-900, letter spacing, alignment, line height, mixed runs, links);
-cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 90 px checked); fills with transparency; solid, dashed and dotted borders;
-box shadows; rotation; pictures with cover/contain, rounded corners and shadow; a small GIF as its first frame inside a rounded mask. Everything stays editable.
+cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 90 px checked); solid fills, **linear and radial gradients**; solid, dashed, dotted and
+**double** borders; box shadows; rotation; **pictures** (embedded: cover/contain, rounded corners, shadow, **opacity**, polygon/circle/ellipse/inset clips, clipping by an
+`overflow:hidden` parent); `clip-path` shapes. Everything stays editable, and picture crops are Google's own crop settings.
 
 **Works with a catch:**
-- Text wraps by the box width in Google. Single lines and most paragraphs are fine; a multi-line text that exactly fills a coloured box can wrap one word differently, and a single word longer than its box gets broken.
-- Fonts: only Inter, Bricolage Grotesque, Instrument Sans and Fredoka have been compared. Another font needs a calibration run first (`calib-deck`, upload, `calib-fit`) and may not have all weight names in Google.
-- Pictures need a second step (upload the picture bundle, read its URLs, send `replaceImage`). They are time-limited links, about 30 minutes.
-- GIFs over 0.85 MB cannot go through the connector; they need a Drive folder shared by link (manual).
+- Text wraps by the box width in Google. A multi-line text that exactly fills a coloured box can wrap one word differently, and a single word longer than its box gets broken.
+- Fonts: only Inter, Bricolage Grotesque, Instrument Sans and Fredoka have been compared. Another font needs a calibration run first and may not have all weight names.
+- Pictures beyond the upload budget (about 2.7 MB of images per deck) are placeholders filled by `replaceImage` (second step, 30-minute links) and lose opacity and clip fit.
+- GIFs always go through the placeholder route; over the cap they need a Drive folder shared by link (manual).
 
-**Does not work (lost in the export; the converter prints a warning for each):** gradients (linear and radial backgrounds), `clip-path` shapes, blur filters,
-blend modes, double borders (drawn solid), `overflow:hidden` clipping of a child (the child shows in full), group opacity (applied per child, so overlaps look darker),
-**picture opacity** (comes out fully opaque), animation and transitions (not attempted).
+**Does not work (lost in the export; the converter prints a warning for each):** blur filters, blend modes, group opacity (overlaps look darker),
+`background-image` other than a single gradient, rounded `inset()` clips, animation and transitions (not attempted).
 
-**Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG (it should become a transparent picture, not run);
-real pitch-deck pictures; the pitch deck slides not re-measured on the final build; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B);
-re-templating into company layouts (route C).
+**Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG; real pitch-deck pictures; the pitch deck slides not re-measured on the final build;
+gradient text, off-centre radial gradients; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B); re-templating into company layouts (route C, but see the experiment: layouts and placeholders survive import).
 
-**Not possible in this approach at all:** real placeholders and master/theme linkage (nothing in the Claude deck says which box is a title), so a layout change in Slides will not re-flow text.
-
-## Experiments on closing the gaps (measured, converter not yet changed to use them)
-
-`test-decks/experiments/make_experiments.py` builds three PPTX files that were uploaded and read back through the Slides API and thumbnails.
-All results are for Google's PPTX import and `replaceImage`; **none of this is wired into `d2s.py convert` yet**.
-
-| Gap | Experiment | Result |
-|---|---|---|
-| Gradients | `gradFill`: linear 90 deg, linear 45 deg with 3 stops, radial (`path="circle"`), linear with alpha stops, on a rectangle, a rounded rectangle and an ellipse | **All six import natively and render correctly**, including alpha stops. Editable gradient fills in Slides |
-| clip-path | `custGeom` polygon (triangle, pentagon) as shape, with solid and gradient fill; a pentagon `custGeom` on a **picture** | Shapes import as freeform shapes. **The picture clip survives `replaceImage`** (noise picture swapped in, still clipped to the pentagon) |
-| Double border | `a:ln cmpd="dbl"` and `"tri"`, plus dashed and dotted | **Imported and rendered** (double, triple, dashed, dotted) |
-| Picture opacity | A real picture embedded in the PPTX with `alphaModFix` 50%, with and without rounded mask and shadow, plus a rotated rounded mask | **All native and correct.** So opacity is possible if the picture is embedded in the uploaded PPTX instead of swapped in with `replaceImage` (which drops it) |
-| Upload size | 2.1 MB PPTX with a 2 MB picture | Uploaded and converted with the picture intact. The 0.85 MB cap is **not reproduced**; the real cap is unknown. This may allow embedding most pictures directly, which would also make opacity, shadow, mask and clip native with no second step |
-| Template layouts | A PPTX with a renamed layout, a coloured master background, a layout bar and a title placeholder | **Imported intact:** layout name kept, master background and layout bar rendered, and the slide's title is a real placeholder bound to the layout (`parentObjectId` set). So a deck built on a company template PPTX should keep real layouts and placeholders |
-| Blur, blend modes, group opacity, overflow:hidden | not run | still need compute or rasterize strategies (see the brainstorm) |
-
-What this changes: gradients, clip-path, double borders and picture opacity can become native instead of lost, and layouts are possible. Not tested: gradient
-text, `radial` positions other than centre, clip-paths with curves, large pictures near the real size cap, a real company template with theme fonts.
+**Not possible in this approach at all:** real placeholders and master/theme linkage from a plain Claude deck (nothing says which box is a title); the experiment shows a PPTX
+built on a template keeps them, but the converter does not build on a template yet.
 
 ## Ways of working (pick one per deck)
 
@@ -83,7 +65,7 @@ What each route gives you, and what was tested. "Tested" means run end to end in
 ## Install and run
 
 ```
-pip install -r requirements.txt          # python-pptx Pillow lxml numpy scipy fonttools brotli pytest
+pip install -r requirements.txt          # python-pptx Pillow lxml numpy scipy fonttools brotli pytest shapely
 npm i -g playwright                      # Chromium is needed; export NODE_PATH=$(npm root -g)
 apt-get install -y gifsicle ffmpeg poppler-utils   # clips and PDF -> PNG only
 
@@ -139,12 +121,16 @@ measurement, not re-measured; *failed* = tried and does not work.
 | 7 | Glyph missing from the web font -> Arial | canvas measurement | carried over |
 | 8 | Letter spacing -4 to +12 px is kept (`spc`); widths equal Chromium (ratio 1.000 to 1.0013 on 9 rows) | `letter-spacing` slide | **verified** |
 | 9 | Picture shadow: `outerShdw` on the picture itself. Survives `replaceImage` (alpha 0.349, blur 158750 EMU read back). The old "separate rounded shape behind" is no longer needed (`PICTURE_SHADOW='shape'` keeps it) | `picture-effects` slide, read back through the API and compared visually | **verified** |
-| 10 | Pictures: rounded picture element with a transparent 1x1 placeholder, filled by `replaceImage` (CENTER_CROP cover, CENTER_INSIDE contain) | `pictures` + `picture-effects`: **the roundRect mask, rotation and radii 0/40/80/150/300 are kept after `replaceImage`**; full-reference diff 0.23% on `pictures` | **verified**; `--picture-mode shape` stays as the fallback |
-| 10a | **Picture opacity is not possible in mask mode:** the API says "transparency cannot be updated", and `alphaModFix` on the placeholder is dropped by `replaceImage` (import keeps it, replace removes it). The converter prints nothing for this yet | `picture-effects` slide, API read-back | failed; opacity < 1 on a picture is lost (flag `PICTURE_ALPHA` left off) |
-| 11 | GIF: < 1000 frames, settled first frame, plain rectangle (mask gives the corners), by link if over 0.85 MB | `gif` slide: rounded masks and `replaceImage` work for a small GIF; first frame only, playback not checked | partly verified |
+| 10 | **Pictures are embedded in the uploaded PPTX** (`--picture-mode auto`, default): downscaled to 1.5x their size, native crop (`srcRect` -> Google crop offsets), rounded/clip mask, shadow, opacity. What does not fit the budget (about 2.7 MB of pictures; GIFs) stays a transparent 1x1 placeholder filled by `replaceImage` (CENTER_CROP cover, CENTER_INSIDE contain) | `pictures` 0.00% and `picture-effects` 0.00% against the full browser render. The roundRect mask, rotation and radii also survive `replaceImage` (checked before embedding existed) | **verified** |
+| 10a | Picture opacity: **works for embedded pictures** (`alphaModFix`, read back as `transparency: 0.5`). **Lost for placeholder pictures** that go through `replaceImage` (the API says "transparency cannot be updated", and replace drops it). The builder embeds opacity pictures first | `picture-effects`: 7.09% -> 0.00% | **verified**; placeholder pictures with opacity still lose it |
+| 10b | A clipped picture (polygon, circle, overflow clip): Google fits the image to the **bounding box of the clip path**, so the frame is set to that box and the matching part of the image is cropped natively. Contain pictures are not rounded unless the element's own corners reach them | `native-effects` 0.00% (it was 1.9% before the bounding-box fix; the picture was 30% too small) | **verified** |
+| 11 | GIF: < 1000 frames, settled first frame, plain rectangle (mask gives the corners), by link if over the upload cap (about 3 MB) | `gif` slide: rounded masks and `replaceImage` work for a small GIF; first frame only, playback not checked | partly verified |
 | 12 | Inline SVG is rasterised to a transparent PNG | - | carried over, untested |
 | 13 | Shadows, alpha, rotation, colours, borders | slides `shadows`, `alpha`, `rotation`, `colour`: 0.00% pixel difference; `borders` 0.52% (solid/dashed/dotted drawn, not inspected one by one) | **verified** |
-| 14 | **Dropped, now warned at convert time:** gradients (linear, radial), clip-path, filter blur, mix-blend-mode, double border (drawn solid), `overflow:hidden` clipping a child, group opacity (applied per child, overlaps look darker) | `unsupported` and `layering` slides: 19.5% / 3.1% pixels differ | **verified as lost**; not implemented |
+| 14 | **Now native (verified):** linear and radial gradients (angle, keywords, px and % stops, alpha stops; radial assumes the centre), `clip-path` polygon / circle / ellipse / inset (square corners), `overflow:hidden` clipping of shapes and pictures (curves become polygons with 32 points per quarter circle, about 0.1 px), double border (`cmpd=dbl`), 50% radius as a true ellipse. **Still lost, and warned at convert time:** blur, blend modes, group opacity (applied per child, overlaps look darker), `background-image` that is not a single gradient, `inset(... round ...)` (drawn square), `radial-gradient` positions other than the centre | `unsupported` 19.5% -> 0.9%; `layering` 3.1% -> 1.4%; `native-effects` 0.00% | **verified** |
+| 15 | Upload size: a 3.03 MB PPTX uploads; a 6 MB one is refused by the connector (4.2 MB per call, about 3.1 MB for files). The old 0.85 MB figure was wrong | cap tests | **verified** |
+| 16 | Text with `line-height` above 2.0 whose box is one line high (the "line-height = box height" centring idiom) is centred as one natural line (`anchor=middle`); other first-line offsets are extrapolated at slope -0.5 per unit line height up to 2.0 | `line-height` slide 0.28% -> 0.00%; the pill probe's text lined up | **verified** to 2.0 |
+| 17 | `<img>` with a background colour gets a shape behind it (`contain` letterboxes) | `pictures` | **verified** |
 
 ## Test results (last session)
 
@@ -170,9 +156,15 @@ The other 22 slides were not re-measured on the final build.
 Code changes made from these tests: true `ellipse` for 50% radius, widening for text that overflows its box, picture shadow on the picture, transparent placeholder,
 opacity request removed, 4-line calibration deck, warnings for dropped CSS, `report` JSON fix.
 
+**Second round (feature deck, 21 slides, final build, pixel diff % against the full browser render, text blocks >4 px):**
+font-size 0.28 (0), line-height 0.00 (0), weights 0.40 (0), letter-spacing 0.03 (0), alignment 0.00 (0), wrapping 0.51 (3), corner-radius 0.52 (1), borders 0.52 (0),
+shadows 0.00, alpha 0.00, rotation 0.00, **pictures 0.00**, **picture-effects 0.00**, gif 31.4 (placeholders not swapped in this run, expected), grid 0.00 (1: 61 px, not investigated),
+colour 0.00, text-styles 1.83 (4), layering 1.41 (group opacity), **unsupported 0.91** (blur and blend), **native-effects 0.00**, composite 0.17. 11 of 21 under 0.15%.
+Compare the first round: pictures 0.23, picture-effects 7.09 (opacity), layering 3.06, unsupported 19.50.
+
 ## Test decks
 
-`test-decks/features/` (regenerate with `python3 generate.py`): 20 slides, one rule each (see the rule table for what each covered).
+`test-decks/features/` (regenerate with `python3 generate.py`): 21 slides (adds `native-effects`), one rule each (see the rule table for what each covered).
 
 ## Why PPTX import and not the Slides API (measured)
 
@@ -185,9 +177,9 @@ base64 through a chat tool is not dependable beyond a few KB.
 
 ## Known limits
 
-- Drive connector: upload size (~0.85 MB per file via file reference, file inside the working directory); only sees files it created; no bulk trash.
-- Still manual: GIFs over 0.85 MB (shared-folder link), picture opacity, anything in rule 14.
+- Drive connector: upload size (about 3.1 MB of files per call, file inside the working directory); only sees files it created; no bulk trash.
+- Still manual: GIFs over the cap (shared-folder link), opacity on placeholder pictures, blur, blend modes, group opacity.
 - Only Inter, Bricolage Grotesque, Instrument Sans and Fredoka have ever been compared with Google. Do not assume other fonts; run calibration.
 - Weight names for other families may not exist in Google's font list; check the `weights` slide.
-- Dashed lines use Google's longer dash; inline SVG becomes pictures; GIFs over 0.85 MB must go in by a shared-folder link.
+- Dashed lines use Google's longer dash; inline SVG becomes pictures; GIFs over the cap must go in by a shared-folder link.
 - Slides outside the 1920x1080 frame are not supported.

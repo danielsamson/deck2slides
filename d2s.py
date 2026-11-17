@@ -56,7 +56,7 @@ def pdf2png(a):
 
 def requests(a):
     m = json.load(open(a.work + '/manifest.json')); tags = json.load(open(a.tags)); urls = json.load(open(a.urls))
-    if m['mode'] == 'mask': reqs, missing = gslides.replace_image_requests(m['elements'], tags, urls)
+    if m['mode'] in ('mask', 'auto', 'embed'): reqs, missing = gslides.replace_image_requests(m['elements'], tags, urls)
     else: reqs, missing = gslides.replace_shape_requests(urls.keys(), urls), []
     print('missing elements:', missing, file=sys.stderr); print(gslides.dump(reqs))
 
@@ -70,7 +70,7 @@ def report(a):
     json.dump(rows, open(a.work + '/report_%s.json' % os.path.basename(a.thumbs.rstrip('/')), 'w'), indent=1, default=float)
 
 p = argparse.ArgumentParser(); sub = p.add_subparsers(dest='cmd', required=True)
-c = sub.add_parser('convert'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.add_argument('--gifs'); c.add_argument('--calibration'); c.add_argument('--picture-mode', default=C.PICTURE_MODE, choices=['mask', 'shape']); c.set_defaults(f=convert)
+c = sub.add_parser('convert'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.add_argument('--gifs'); c.add_argument('--calibration'); c.add_argument('--picture-mode', default=C.PICTURE_MODE, choices=['auto', 'embed', 'mask', 'shape']); c.set_defaults(f=convert)
 c = sub.add_parser('calib-deck'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.set_defaults(f=calib_deck)
 c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('-o'); c.set_defaults(f=calib_fit)
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)

@@ -16,7 +16,7 @@ def test_calibration_overrides_natural_and_interpolates_dy():
     cal = {'fonts': {'F': {'natural': 1.1, 'dy': [[1.0, -0.02], [1.4, 0.02]]}}}
     db = fonts.FontDB({'F': dict(natural=1.2)}, cal)
     assert db.natural('F') == 1.1
-    assert abs(db.dy('F', 1.2, 60) - 0.0) < 1e-9 and abs(db.dy('F', 0.5, 100) - 2.0) < 1e-9 and abs(db.dy('F', 9, 100) + 2.0) < 1e-9
+    assert abs(db.dy('F', 1.2, 60) - 0.0) < 1e-9 and abs(db.dy('F', 0.5, 100) - 2.0) < 1e-9 and abs(db.dy('F', 1.9, 100) - (-(0.02 - 0.5 * 0.5) * 100)) < 1e-9   # beyond the table: slope -0.5 per unit line height
 
 def test_weight_face_names():
     assert fonts.FontDB.face('Inter', 600) == 'Inter SemiBold' and fonts.FontDB.face('Inter', 700) == 'Inter' and fonts.FontDB.bold(700) and not fonts.FontDB.bold(800)
