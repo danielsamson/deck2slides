@@ -20,3 +20,4 @@ examples/tokens/*/
 examples/applied*/
 examples/composed/
 examples/*-converted/
+examples/pitch-asset-map.json

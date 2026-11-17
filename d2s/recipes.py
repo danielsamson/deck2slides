@@ -150,6 +150,8 @@ def extract_element(el, recipe, tk, descs, ox=0.0, oy=0.0, used=None):
         small = [r for r in d['runs'] if r['px'] < recipe['styles'][el['style']]['px'] * 0.9]
         return dict(value=' '.join(r['text'] for r in big), unit=' '.join(r['text'] for r in small))
     if el['type'] == 'image':
+        if el.get('placeholder'):
+            return True      # deliberately left as an empty frame (portraits of real people)
         d = _nearest(descs, x, y, ('image',), tol=60, used=used)
         if d:
             used.add(id(d))
