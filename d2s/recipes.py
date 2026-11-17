@@ -74,7 +74,7 @@ def render_element(el, recipe, tk, content, ox=0.0, oy=0.0):
         return '<div style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;box-sizing:border-box;background:%s;border-radius:%.0fpx"></div>' % (
             x, y, width(el, tk), el['h'], colour(el['colour'], recipe, tk), el.get('radius', 0))
     if t == 'image':
-        src = ('src="IMG:%s" ' % content) if isinstance(content, str) else ''
+        src = ('src="IMG:%s" ' % content) if isinstance(content, str) else ('src="IMG:placeholder-portrait" ' if el.get('placeholder') else '')
         return '<img %salt="%s" style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;object-fit:cover;%s">' % (
             src, html.escape(el.get('alt', 'Picture')), x, y, width(el, tk), el['h'], ('border-radius:%.0fpx' % el['radius']) if el.get('radius') else '')
     return ''
