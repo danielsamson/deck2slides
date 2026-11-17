@@ -103,8 +103,10 @@ class Conv:
                     groups[-1].append(r)
                 else:
                     groups.append([r])
+            inline = len(groups) > 1 and not any('\n' in r.get('content', '').rstrip('\n') or '\x0b' in r.get('content', '') for r in runs)
             if len(groups) > 1:
-                self.warn('paragraph with several sizes split into separate lines')
+                self.warn('paragraph with several sizes laid out as a baseline row' if inline else 'paragraph with several sizes split into separate lines')
+            row_open = len(out)
             for gi, grp in enumerate(groups):
                 fam, wt, sz_pt = key(grp[0])
                 size = sz_pt * PT
@@ -132,6 +134,10 @@ class Conv:
                 style = 'margin:%.0fpx 0 %.0fpx;font-family:\'%s\',Arial,sans-serif;font-size:%.1fpx;line-height:%.1fpx;font-weight:%d;color:%s;text-align:%s' % (
                     above, below, fam, size, lh, wt, colour, al)
                 out.append('<p style="%s">%s</p>' % (style, ''.join(spans)))
+            if inline:
+                blocks = out[row_open:]
+                del out[row_open:]
+                out.append('<div style="display:flex;align-items:baseline;gap:%.0fpx">%s</div>' % (0.3 * key(groups[0][0])[2] * PT, ''.join(blocks)))
         fill = self.col(sp.get('shapeBackgroundFill', {}).get('solidFill')) if sp.get('shapeBackgroundFill', {}).get('propertyState') != 'NOT_RENDERED' else None
         return ('<div style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;box-sizing:border-box;'
                 'padding:%.1fpx %.1fpx;display:flex;flex-direction:column;justify-content:%s">%s</div>') % (

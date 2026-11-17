@@ -364,8 +364,9 @@ def structural_files(res, tk):
     import re as _re
     hexmap = {}
     for t in tk['color']['tokens']:
-        v = t['value'][tk['color']['themes'][0]['id']] if isinstance(t['value'], dict) else t['value']
-        hexmap.setdefault(v.lower(), t['name'])
+        if isinstance(t['value'], dict):
+            continue        # a themed token (ink, paper) means different colours in different themes: an exemplar's fixed colour must not be bound to it
+        hexmap.setdefault(t['value'].lower(), t['name'])
 
     def tokenise(body):
         return _re.sub(r'(color|background|border-top|border):([^;"]*?)(#[0-9a-fA-F]{6})', lambda m: '%s:%svar(--%s,%s)' % (m.group(1), m.group(2), hexmap[m.group(3).lower()], m.group(3)) if m.group(3).lower() in hexmap else m.group(0), body)
@@ -401,7 +402,7 @@ def structural_files(res, tk):
         if sl:
             lines.append('The consumer provides the text for each slot; fixed text stays as it is in the source.\n')
             for s in sl:
-                lines.append('- **%s** (%gpx, weight %s, %s): %s' % (s['role'], s['px'], s['weight'], s['colour'],
+                lines.append('- **%s** (%gpx, weight %s, %s; its box is %dpx wide, about %d characters per line): %s' % (s['role'], s['px'], s['weight'], s['colour'], w, max(1, int(w / (0.55 * s['px']))),
                              ('fixed text, always "%s"' % s['examples'][0][:60]) if s['fixed'] else 'slot; for example %s' % ', '.join('"%s"' % e[:40] for e in s['examples'][:3])))
         if c.get('usage'):
             lines.insert(1, c['usage'])
@@ -423,8 +424,9 @@ def layout_files(res, slides_json, masters_json, tk, comps=None):
     from . import gslides2claude as G
     hexmap = {}
     for t in tk['color']['tokens']:
-        v = t['value'][tk['color']['themes'][0]['id']] if isinstance(t['value'], dict) else t['value']
-        hexmap.setdefault(v.lower(), t['name'])
+        if isinstance(t['value'], dict):
+            continue
+        hexmap.setdefault(t['value'].lower(), t['name'])
     tok = lambda s: _re.sub(r'(color|background):([^;"]*?)(#[0-9a-fA-F]{6})', lambda m: '%s:%svar(--%s,%s)' % (m.group(1), m.group(2), hexmap[m.group(3).lower()], m.group(3)) if m.group(3).lower() in hexmap else m.group(0), s)
     work = tempfile.mkdtemp()
     ex = {v['exemplar'] - 1 for e in res for v in e['variants']}

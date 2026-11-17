@@ -384,3 +384,12 @@ The first atom and block lists were mostly noise (24 atoms and 7 blocks, many du
 - **Missed by the derivation, found by eye and then searched for** (`components.seeded_component`: point at an example, take the elements inside the box, find every place the same elements recur in the same arrangement): Team member (8 on one slide), Link button (2 slides), Key cap (3 on one slide), Progress rule (1 match, loosened for width), Stat column (3 on one slide). Seeds with thin evidence say so in their README.
 
 The derive-then-review split is therefore: derivation finds candidates and repeats, a person (or Claude, looking) says what is a component, and the seeding step turns what the person points at into something verified against the deck. Fifteen components remain, against 31 candidates.
+
+### Designing new pages from a system (`test-decks/composed/compose.py`)
+
+The consumer test: read the system's tokens, take components and layouts from its previews, fill their slots and place them. Nothing is measured from the source deck. `examples/composed/composed.png` shows two pages (a light page from Eyebrow plus three Stat columns, and a dark page from the verified Statement layout with the Link button). Using the system this way found four defects, all fixed:
+
+1. Previews bound a white background to `var(--ink)`, because white is `ink` in the dark theme and `paper` in the light one. Themed tokens are no longer used to bind an exemplar's fixed colours.
+2. The Stat column put its unit ("hrs") on a line below the figure, because a paragraph with two sizes was split into stacked blocks, and the unit then overlapped the label. A paragraph whose sizes change without a line break is now a baseline row.
+3. A longer unit ("reviews") ran into the next column, because nothing said how much a slot can hold. Slot lines in each README now give the box width and about how many characters fit.
+4. The Link button is white, so it vanishes on a light page: components carry the colours of the slide they came from. The system has no light variant of it; the composed page puts the button on the dark page only. Component variants per theme are not derived yet.
