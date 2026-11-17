@@ -26,6 +26,28 @@ about 0.85 MB. Hand-typed base64 is not dependable.
 minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
 several times; check every download is a valid PNG).
 
+## What works, what does not (route A, plain version)
+
+**Works and was checked against Google:** text (position, size, colour, weights 100-900, letter spacing, alignment, line height, mixed runs, links);
+cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 90 px checked); fills with transparency; solid, dashed and dotted borders;
+box shadows; rotation; pictures with cover/contain, rounded corners and shadow; a small GIF as its first frame inside a rounded mask. Everything stays editable.
+
+**Works with a catch:**
+- Text wraps by the box width in Google. Single lines and most paragraphs are fine; a multi-line text that exactly fills a coloured box can wrap one word differently, and a single word longer than its box gets broken.
+- Fonts: only Inter, Bricolage Grotesque, Instrument Sans and Fredoka have been compared. Another font needs a calibration run first (`calib-deck`, upload, `calib-fit`) and may not have all weight names in Google.
+- Pictures need a second step (upload the picture bundle, read its URLs, send `replaceImage`). They are time-limited links, about 30 minutes.
+- GIFs over 0.85 MB cannot go through the connector; they need a Drive folder shared by link (manual).
+
+**Does not work (lost in the export; the converter prints a warning for each):** gradients (linear and radial backgrounds), `clip-path` shapes, blur filters,
+blend modes, double borders (drawn solid), `overflow:hidden` clipping of a child (the child shows in full), group opacity (applied per child, so overlaps look darker),
+**picture opacity** (comes out fully opaque), animation and transitions (not attempted).
+
+**Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG (it should become a transparent picture, not run);
+real pitch-deck pictures; the pitch deck slides not re-measured on the final build; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B);
+re-templating into company layouts (route C).
+
+**Not possible in this approach at all:** real placeholders and master/theme linkage (nothing in the Claude deck says which box is a title), so a layout change in Slides will not re-flow text.
+
 ## Ways of working (pick one per deck)
 
 What each route gives you, and what was tested. "Tested" means run end to end in the last session; everything else is stated as untested.
