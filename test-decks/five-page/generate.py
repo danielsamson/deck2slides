@@ -30,8 +30,9 @@ NOTES = {'title': 'Title page. One grid, one type system, public-domain images.'
 
 # ---- 1 title page (dark)
 section('title', 'dark', [
-    '<img src="%s" alt="The Earth seen from Apollo 17" style="%s">' % (src('apollo17_disk.jpg'), pin(cx(8) + 16, 284, None, 'width:512px;height:512px;object-fit:cover;border-radius:256px')),
-    '<div class="col" style="%s">' % pin(MARGIN, 128, span(7), 'height:824px'),
+    '<x-shape kind="ellipse" style="%s"></x-shape>' % pin(cx(7) - 140, 128, 824, 'height:824px;box-sizing:border-box;border:12px solid #B4F000'),
+    '<img src="%s" alt="The Earth seen from Apollo 17" style="%s">' % (src('apollo17_disk.jpg'), pin(cx(7) + 16, 284, None, 'width:512px;height:512px;object-fit:cover;border-radius:256px')),
+    '<div class="col" style="%s">' % pin(MARGIN, 128, span(6), 'height:824px'),
     '<div class="stack"><p class="eyebrow lime">Test piece · 2026</p><h1 class="display">Same deck,<br>three apps.</h1></div>',
     '<div class="stack"><p class="body soft">One grid, one type system, public-domain images. Built in Claude, shown in Google Slides and PowerPoint.</p><p class="pill">CLAUDE CODE</p></div>',
     '</div>', footer(1, True)])

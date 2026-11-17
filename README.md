@@ -120,8 +120,21 @@ Measured on the file Google wrote back (2.9 MB for the five-page piece):
 
 **PowerPoint to Google Slides:** upload with conversion (what this tool does).
 
-**Google Slides or PowerPoint to Claude Slides:** no converter exists. A Claude Slides deck is HTML (`deck.json`, `deck.css`, `slides/*.html`). A `slides2html` could read a PPTX (python-pptx, already used here; the round trip above shows Google's PPTX
-keeps exact geometry, fills, crops and fonts) or the Slides API JSON and write absolutely positioned elements. That would be mostly mechanical for text, shapes and pictures and would give positioned boxes, not a semantic layout (no CSS grid or flow). Feasible, not started.
+**Google Slides or PowerPoint to Claude Slides: `d2s.py pptx2claude` (tier 1, built and tested).** Does Claude already import PowerPoint? Searching the Slides artifact type's own code and references (read-worker, export, app, SKILL.md and the reference pages) found a PowerPoint **export** (its Download menu) and **no PowerPoint import**; the only `presentationml` mention is a list of file types accepted as attachments. Whether claude.ai offers an importer elsewhere could not be checked from here.
+
+```
+python3 d2s.py pptx2claude deck.pptx <outdir> [--calibration calibration.json]
+# writes deck.json (v5, format), deck.css (shared classes), slides/s1.html ..., assets/ (images) and assets-map.json, convert-report.json (warnings)
+# upload assets/* to the Slides artifact, replace the /_blob/<sha> ids with the returned ones (blobs list: convert-report.json), publish under project/
+```
+
+What it does: everything is pinned on the 1920 x 1080 canvas (a PPTX only knows positions): text becomes `<p>` classes in a flex `<div>` (painted when the shape is), ellipses `<x-shape kind="ellipse">`, lines `<x-connector>`,
+pictures `<img>` with object-fit/`data-crop`, radius (capped at 256), box-shadow and opacity, freeform shapes an inline `<svg>`, a full-slide backdrop becomes the section background, gradients/dashes/double borders map back to CSS, repeated text styles become shared classes, notes become `<aside>`.
+It undoes what the exporter does (first-line shift, rounded-text inset, stroke inset), so a deck this tool exported comes back at its original CSS positions. Anything the format cannot hold is a warning (custom clip on a picture, mixed faces inside a paragraph, elliptical mask over 512 px, radius over 256, over 200 elements, over 4 families).
+
+Measured (`examples/five-page/round-trip.png`; the converted deck is in `examples/five-page/from-google/`): the five-page deck exported **from Google Slides** as PPTX, converted, and rendered again against the original render: **0.00% pixel difference on all five slides**, text boxes identical to the pixel (dx 0, dy 0).
+The type's own reader reads the five generated slides with **0 drops, 0 unsupported, 0 warnings, 0 refused**. A harder input (the Google export of the first, non-conforming version) converts with the one expected warning (circular clip on a picture).
+**Not tested / not covered:** decks not made by this tool (placeholders and inherited text styles from layouts and masters, tables, charts, SmartArt, WordArt, grouped shapes with rotation, bullets and numbering, autofit), images over the format's limits, the generated deck opened in the live viewer or published with real uploaded asset ids (the closed loop used the original image ids), and PowerPoint-authored files in general (only Google and this tool's PPTX were used). The output is positioned boxes, not a semantic layout.
 
 ## Guides and grids
 

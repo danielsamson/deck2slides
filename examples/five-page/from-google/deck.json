@@ -1,0 +1,39 @@
+{
+ "v": 5,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-01-01T00:00:00Z"
+ },
+ "lists": "css",
+ "format": {
+  "v": 1,
+  "shared": [
+   "project/deck.css"
+  ]
+ },
+ "title": "google-export",
+ "order": [
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "s5"
+ ],
+ "sections": {
+  "s1": {
+   "description": "Imported deck",
+   "start": "s1"
+  }
+ },
+ "faces": {
+  "inter": {
+   "family": "Inter",
+   "href": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  },
+  "bricolage-grotesque": {
+   "family": "Bricolage Grotesque",
+   "href": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&display=swap"
+  }
+ },
+ "designSystems": []
+}
