@@ -109,7 +109,7 @@ def claude_tokens(name, spec):
     out = dict(name=name, version=1,
                color=dict(themes=spec.get('themes', [dict(id='light', name='Light')]), tokens=spec['colors']),
                type=dict(fonts=[], families=fam, groups=groups),
-               spacing=dict(tokens=[dict(name='space-%d' % s, value='%dpx' % s, usage=spec['space_usage'].get(str(s), 'Spacing step.')) for s in SPACE_SCALE]),
+               spacing=dict(tokens=[dict(name='space-%d' % s, value='%dpx' % s, usage=spec['space_usage'].get(str(s), 'Spacing step.')) for s in spec.get('space', SPACE_SCALE)]),
                radius=dict(tokens=spec['radius']),
                shadow=dict(tokens=spec['shadows']))
     return out
