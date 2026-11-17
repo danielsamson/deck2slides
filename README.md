@@ -105,10 +105,20 @@ read by a second consumer, but it is not proof of how PowerPoint draws it. **To 
 
 ## The other direction (Google Slides to PowerPoint or Claude Slides)
 
-Not built or tested in this project. What is known:
-- **Google Slides to PowerPoint:** File > Download > Microsoft PowerPoint (.pptx), or Drive `download_file_content` with `exportMimeType` `application/vnd.openxmlformats-officedocument.presentationml.presentation`. Google writes its own PPTX, so shapes, gradients, crops, shadows and text come back as Google understands them; fonts are not embedded, so PowerPoint substitutes any font that is not installed. How much survives the round trip was **not measured**.
-- **PowerPoint to Google Slides:** upload with conversion (what this tool does).
-- **Google Slides or PowerPoint to Claude Slides:** no converter exists. A Claude Slides deck is HTML (`deck.json`, `deck.css`, `slides/*.html`). A `slides2html` could read the Slides API JSON (`read_presentation`: position, size, fills, text runs, picture URLs) or a PPTX (python-pptx, already used here) and write absolutely positioned elements. That would be mostly mechanical for text, shapes and pictures, and would give positioned boxes, not a semantic layout (no CSS grid or flow). Feasible, not started.
+**Google Slides to PowerPoint: tested (round trip of the five-page piece and of the template demo).** Export with the Drive connector: `download_file_content` with `exportMimeType`
+`application/vnd.openxmlformats-officedocument.presentationml.presentation`; the connector saves the .pptx to a file (no base64 pasting), or File > Download > Microsoft PowerPoint (.pptx) by hand.
+Measured on the file Google wrote back (2.9 MB for the five-page piece):
+- 5 slides, same shape counts per slide (94 shapes and pictures), **geometry identical to the uploaded PPTX: 0 EMU difference on all 94**.
+- Gradients (`gradFill`), the circular clip (`custGeom`), rounded rectangles, drop shadows (`outerShdw`), picture crops (`srcRect`) and the three images (same file sizes) all came back; the font face names ("Inter SemiBold", "Bricolage Grotesque ExtraBold") are unchanged; fonts are not embedded.
+- Small changes: `Calibri` on empty end-of-paragraph marks (30 of them), an empty `alphaModFix` on pictures, borders written as `cmpd="sng"`.
+- Rendered with LibreOffice, the exported file differs from the render of the file we uploaded by **0.00% on all five slides**.
+- Template demo: the 11 layouts, the title placeholder (still `type="title"`, still bound to the first layout) and the master background colour came back; the custom layout name was replaced by Google's own type name (`TITLE_ONLY`).
+- **Not tested:** how PowerPoint itself opens that file (no PowerPoint here; LibreOffice and XML checks only), and edits made inside Google Slides before exporting.
+
+**PowerPoint to Google Slides:** upload with conversion (what this tool does).
+
+**Google Slides or PowerPoint to Claude Slides:** no converter exists. A Claude Slides deck is HTML (`deck.json`, `deck.css`, `slides/*.html`). A `slides2html` could read a PPTX (python-pptx, already used here; the round trip above shows Google's PPTX
+keeps exact geometry, fills, crops and fonts) or the Slides API JSON and write absolutely positioned elements. That would be mostly mechanical for text, shapes and pictures and would give positioned boxes, not a semantic layout (no CSS grid or flow). Feasible, not started.
 
 ## Guides and grids
 
