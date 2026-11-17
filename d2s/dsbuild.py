@@ -58,6 +58,10 @@ def fetch_font_files(wanted, outdir, cache):
             url = next((u for n, u in blocks if n == 'latin'), blocks[0][1] if blocks else None)
             if not url:
                 raise RuntimeError('no face')
+            # open-licence Google Fonts live under /s/<family>/; a /l/font?kit= URL is a proxied face whose licence and
+            # identity we cannot check (e.g. 'Helvetica Neue'), so it is reported, not bundled
+            if 'fonts.gstatic.com/s/' not in url:
+                raise RuntimeError('kit url')
             open(dest, 'wb').write(F._get(url, True))
             got[(fam, w)] = rel
         except Exception:
@@ -138,7 +142,7 @@ def build_tokens(d, name, cache, outdir, fetch=True):
     files, missing = ({}, []) if not fetch else fetch_font_files(wanted, outdir, cache)
     tk['type']['fonts'] = [{'family': f, 'file': p, 'weight': str(w)} for (f, w), p in sorted(files.items())]
     if missing:
-        warn.append('no font file found (not on Google Fonts): ' + ', '.join(missing))
+        warn.append('not bundled (not on Google Fonts, or served from a proxied kit URL with an unchecked licence): ' + ', '.join(missing))
     return tk, files, missing, fails, warn
 
 
@@ -318,6 +322,9 @@ def readme(d, tk, comps, fails, missing, name):
         L.append('- No font file is bundled for %s; load it from your own licence or fall back to the stack.' % ', '.join(missing))
     g = d['grid']
     L.append('\n## Layout\n')
+    cf = d.get('confidence', {})
+    if cf.get('grid', {}).get('level') == 'low':
+        L.append('- Low confidence: %s. Treat the grid below as a starting point only.' % cf['grid']['why'])
     if g.get('columns'):
         L.append('- Canvas %gx%g px: %d columns, %gpx gutter, %gpx margins (`grid-columns`, `grid-gutter`, `grid-margin`). Start and end blocks on column edges.' % (
             g['canvas'][0], g['canvas'][1], g['columns'], g['gutter'], g['margin_left']))
@@ -343,6 +350,8 @@ def readme(d, tk, comps, fails, missing, name):
 def build(model, d, name, outdir, tagline=None, fetch=True):
     cache = os.path.join(outdir, '.fontcache')
     proj = os.path.join(outdir, PROJECT)
+    import shutil
+    shutil.rmtree(proj, ignore_errors=True)   # no stale files from an earlier build
     os.makedirs(proj, exist_ok=True)
     tk, files, missing, fails, warn = build_tokens(d, name, cache, proj, fetch)
     problems = T.validate_claude_ds(tk)
@@ -365,7 +374,7 @@ def build(model, d, name, outdir, tagline=None, fetch=True):
         p = os.path.join(proj, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, 'w').write(text)
-    return dict(problems=problems, components=list(comps), cover=cinfo, contrast_fails=fails, fonts=sorted(files.values()),
+    return dict(confidence=d.get('confidence'), problems=problems, components=list(comps), cover=cinfo, contrast_fails=fails, fonts=sorted(files.values()),
                 missing_fonts=missing, warnings=warn, files=sorted(list(out) + list(files.values())))
 
 

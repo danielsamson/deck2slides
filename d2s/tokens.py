@@ -385,7 +385,9 @@ def name_colours(cols):
             if light:
                 roles['paper'] = light[0]['hex']
     # mute = the most used text colour that is not ink and has a visibly different lightness
-    rest = [t for t in text if t['hex'] != roles['ink'] and abs(_lum(t['hex']) - _lum(roles['ink'])) > 0.2]
+    paper_hex = roles.get('paper')
+    rest = [t for t in text if t['hex'] != roles['ink'] and abs(_lum(t['hex']) - _lum(roles['ink'])) > 0.2
+            and (not paper_hex or contrast_ratio(t['hex'], paper_hex) >= 3.0)]   # reversed text (on photos or dark slides) is not 'mute'
     if rest:
         roles['mute'] = rest[0]['hex']
     n = 0
@@ -613,7 +615,7 @@ def derive_grid(model):
         source=guides['source'] if guides else 'fitted to recurring element edges',
         margin_right_measured=mr_measured, template_margins=tmpl,
         canvas=[cw, ch], margin_left=ml, margin_right=mr,
-        margin_top=min([y for y, n in tops.items() if n >= thr] or [0]),
+        margin_top=min([y for y, n in tops.items() if n >= thr and y <= ch * 0.25] or [0]),
         columns=fit[1] if fit else None, gutter=fit[2] if fit else None,
         column_width=round(fit[3], 2) if fit else None,
         fit_hit_rate=round(fit[4], 3) if fit else None,
@@ -709,14 +711,50 @@ def derive_slide_kinds(model):
     return dict(counts=dict(kinds), example_slide_index={k: v for k, v in ex.items()})
 
 
+def derive_confidence(d, model):
+    """How far each token set can be trusted, with the reason. low / medium / high."""
+    out = {}
+    g = d['grid']
+    if g.get('source') == 'drawn guide stripes':
+        out['grid'] = ('high', 'the deck draws its own guide stripes')
+    else:
+        hr = g.get('fit_hit_rate') or 0
+        out['grid'] = ('high' if hr >= 0.7 else 'medium' if hr >= 0.35 else 'low',
+                       '%.0f%% of recurring element edges land on the best fit%s' % (hr * 100,
+                       '; the content probably follows no column grid' if hr < 0.35 else ''))
+        if g.get('template_margins'):
+            out['margins'] = ('high', 'set by layouts that real slides use')
+    c = d['colour']
+    cov = sum(f['share'] for f in c['fills'][:8])
+    pics = model.get('picture_backgrounds', 0)
+    n = max(1, model['nslides'])
+    lvl = 'high' if pics / n < 0.1 else 'medium' if pics / n < 0.3 else 'low'
+    out['colour'] = (lvl, '%d of %d slides have a photo background, which carries no palette colour' % (pics, model['nslides'])
+                     if pics else 'every slide background is a solid colour')
+    t = d['type']
+    named = sum(s['share'] for s in t['sizes'])
+    out['type'] = ('high' if named >= 0.9 and t['weights'] else 'medium',
+                   '%.0f%% of characters sit on the %d measured sizes%s' % (named * 100, len(t['sizes']),
+                   '' if any(w.get('weight') for w in t['sizes']) else '; weights and line heights not measured (no extra read)'))
+    sp = d['spacing']
+    r = sp['unit_hit_rate'] or 0
+    out['spacing'] = ('high' if r >= 0.85 else 'medium' if r >= 0.6 else 'low',
+                      'a %s px unit explains %.0f%% of %d gaps' % (sp['base_unit'], r * 100, sp['samples']))
+    out['shadows'] = ('high' if d['shape']['shadows'] else 'medium',
+                      '%d measured' % len(d['shape']['shadows']) if d['shape']['shadows'] else 'none found (Slides input needs the extra read to see them)')
+    return {k: dict(level=v[0], why=v[1]) for k, v in out.items()}
+
+
 def derive(model):
     cols = derive_colours(model)
-    return dict(
+    d = dict(
         slides=model['nslides'], elements=len(model['elements']),
         colour=dict(**cols, roles=name_colours(cols)),
         type=derive_type(model), grid=derive_grid(model),
         spacing=derive_spacing(model), shape=derive_shape(model),
         layouts=derive_layouts(model), slide_kinds=derive_slide_kinds(model))
+    d['confidence'] = derive_confidence(d, model)
+    return d
 
 
 # --------------------------------------------------------------------------
@@ -826,6 +864,7 @@ def to_markdown(d, name):
           '## Shape', '', 'Radii: %s. Strokes: %s. Elements with shadows: %d. Circles: %d.' % (
         ', '.join('%gpx x%d' % (r['px'], r['n']) for r in d['shape']['radii']) or 'none',
         ', '.join('%gpx x%d' % (r['px'], r['n']) for r in d['shape']['strokes']) or 'none', d['shape']['shadow_elements'], d['shape'].get('circles', 0)), '',
+          '## Confidence', '', '\n'.join('- %s: **%s**, %s' % (k, v['level'], v['why']) for k, v in d.get('confidence', {}).items()), '',
           '## Slide kinds', '', ', '.join('%s: %d' % kv for kv in d['slide_kinds']['counts'].items()), '',
           '## Layouts (template)', '']
     for lay in d['layouts']:

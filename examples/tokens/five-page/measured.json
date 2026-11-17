@@ -394,5 +394,27 @@
    "standard": 0,
    "cards/grid": 3
   }
+ },
+ "confidence": {
+  "grid": {
+   "level": "high",
+   "why": "the deck draws its own guide stripes"
+  },
+  "colour": {
+   "level": "high",
+   "why": "every slide background is a solid colour"
+  },
+  "type": {
+   "level": "high",
+   "why": "100% of characters sit on the 7 measured sizes"
+  },
+  "spacing": {
+   "level": "medium",
+   "why": "a 4 px unit explains 75% of 227 gaps"
+  },
+  "shadows": {
+   "level": "high",
+   "why": "3 measured"
+  }
  }
 }

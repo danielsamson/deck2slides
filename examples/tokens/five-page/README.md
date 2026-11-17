@@ -46,6 +46,14 @@ Base unit 4 px explains 75% of 227 measured gaps. Common gaps: 16, 26, 33, 44, 4
 
 Radii: 22px x6, 32px x2, 40px x2. Strokes: 2px x6, 12px x1. Elements with shadows: 5. Circles: 2.
 
+## Confidence
+
+- grid: **high**, the deck draws its own guide stripes
+- colour: **high**, every slide background is a solid colour
+- type: **high**, 100% of characters sit on the 7 measured sizes
+- spacing: **medium**, a 4 px unit explains 75% of 227 gaps
+- shadows: **high**, 3 measured
+
 ## Slide kinds
 
 standard: 4, cards/grid: 1

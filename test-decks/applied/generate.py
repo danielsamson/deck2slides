@@ -23,6 +23,8 @@ MUTE = 'mute' if 'mute' in cname else 'ink'
 sz = {st['name']: float(st['fontSize'][:-2]) for g in tk['type']['groups'] for st in g['styles']}
 px = lambda n: float(tok[n][:-2])
 M, G, N = px('grid-margin'), px('grid-gutter'), int(tok['grid-columns'])
+if 'space-8' in tok and G < 0.5 * px('space-8'):
+    G = px('space-8')   # a measured gutter of ~0 (low-confidence grid) would butt cards together; fall back to the spacing scale
 COL = (1920 - 2 * M - 5 * G) / 6                           # six blocks across the inner width, separated by the system's gutter (aligns with any column count divisible by 6)
 cx = lambda i: M + i * (COL + G)
 span = lambda n: n * COL + (n - 1) * G
@@ -98,7 +100,7 @@ section.field{background:var(--accent-1);color:var(--on-accent-1)}
 .mute{color:var(--%s)}
 .display-xl.title{font-family:var(--font-display);font-size:%dpx;line-height:%dpx;font-weight:700;letter-spacing:-4px}
 .display.h1x{font-family:var(--font-display);font-size:72px;line-height:80px;font-weight:700}
-.h2{font-weight:700}.h3{font-weight:400}.lead{font-weight:400;line-height:48px}
+.h2{font-weight:700}.h3{font-weight:400}.lead{font-weight:400;line-height:1.25}
 .cap{font-size:24px;line-height:24px;font-weight:500}
 .blk{border-radius:%s}
 .card{box-sizing:border-box;background:var(--%s);border-radius:%s;box-shadow:%s;padding:48px;display:flex;flex-direction:column;gap:24px;border:2px solid var(--%s)}
