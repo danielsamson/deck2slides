@@ -367,7 +367,7 @@ def structural_files(res, tk):
         out['components/%s/preview.html' % nm] = (
             '<!-- @dsCard group="%s" height=%d width=%d subtitle="%d instances on %d slides" -->\n<style>body{margin:0;padding:24px;background:%s}'
             '.stage{position:relative;width:%dpx;height:%dpx}</style>\n<div class="stage">\n%s\n</div>\n' % (
-                'Atoms' if atom else 'Content blocks', min(h + 48, 900), w + 48, c['instances'], c['n_slides'], bgv, w, h, tokenise(c['preview_body'])))
+                c.get('group') or ('Atoms' if atom else 'Content blocks'), min(h + 48, 900), w + 48, c['instances'], c['n_slides'], bgv, w, h, tokenise(c['preview_body'])))
         sl = c['slots']
         if atom:
             pl = c['places'][0]
@@ -377,6 +377,10 @@ def structural_files(res, tk):
                 lines.append('- Style: %gpx, weight %s, %s. %s' % (s['px'], s['weight'], s['colour'], ('Text is fixed: "%s".' % s['examples'][0][:50]) if s['fixed'] and s['examples'] else 'The consumer provides the text, e.g. %s.' % ', '.join('"%s"' % e[:30] for e in s['examples'])))
             if len(c['places']) > 1:
                 lines.append('- Placements seen: ' + '; '.join('x %d, y %d (%d times)' % (p['x'], p['y'], p['n']) for p in c['places'][:4]) + '.')
+            if c.get('usage'):
+                lines.insert(1, c['usage'])
+            if c.get('provenance'):
+                lines.append('\n_%s._' % c['provenance'])
             lines += ['', '- Do: use it where the layouts put it.', '- Do not: restyle it or move it off the grid.']
             out['components/%s/README.md' % nm] = '\n'.join(lines) + '\n'
             continue
@@ -387,6 +391,10 @@ def structural_files(res, tk):
             for s in sl:
                 lines.append('- **%s** (%gpx, weight %s, %s): %s' % (s['role'], s['px'], s['weight'], s['colour'],
                              ('fixed text, always "%s"' % s['examples'][0][:60]) if s['fixed'] else 'slot; for example %s' % ', '.join('"%s"' % e[:40] for e in s['examples'][:3])))
+        if c.get('usage'):
+            lines.insert(1, c['usage'])
+        if c.get('provenance'):
+            lines.append('\n_%s._' % c['provenance'])
         lines += ['', '- Do: keep the members in the same relative places and the type sizes above.', '- Do not: add members or change the type scale.']
         out['components/%s/README.md' % nm] = '\n'.join(lines) + '\n'
     L = ['# Layouts', '', 'Slides grouped by what they contain (background, pictures, headline size, number of text blocks, components). Slide numbers are in the source deck.', '']

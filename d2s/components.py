@@ -392,7 +392,7 @@ def extract(slides_json, masters_json, outdir=None, canvas=(1920, 1080)):
         nm = name_group(g, taken)
         sl = slots(g)
         w, h, body = preview_html(g[0], conv)
-        comps.append(dict(name=nm, all_slides=sorted({x['slide'] + 1 for x in g}), bg=slide_bg[g[0]['slide']] or '#ffffff', instances=len(g), slides=sorted({c['slide'] + 1 for c in g})[:12], n_slides=len({c['slide'] for c in g}),
+        comps.append(dict(example_slide=g[0]['slide'] + 1, bbox=[round(v) for v in g[0]['bbox']], name=nm, all_slides=sorted({x['slide'] + 1 for x in g}), bg=slide_bg[g[0]['slide']] or '#ffffff', instances=len(g), slides=sorted({c['slide'] + 1 for c in g})[:12], n_slides=len({c['slide'] for c in g}),
                           members=len(g[0]['members']), size=[round(w), round(h)], slots=sl, preview_body=body,
                           roles=[list(map(str, r)) if isinstance(r, tuple) else r for r in g[0]['roles']]))
     # layouts: slides grouped by what they contain
@@ -518,7 +518,7 @@ def find_atoms(descs, chrome, slide_bg, scheme, conv):
         body = conv.element(e, 0).replace('<img src="IMG:', '<img data-missing="IMG:')
         examples = sorted({x['text'] for _, x in v if x['text']})[:3]
         places = [dict(bin=list(b), n=c, x=round(next(x['x'] for _, x in v if place_bin(x) == b)), y=round(next(x['y'] for _, x in v if place_bin(x) == b))) for b, c in pl.most_common(6)]
-        atoms.append(dict(name=nm, key=k, bg=slide_bg[si] or '#ffffff', instances=len(v), n_slides=len(slides), all_slides=sorted(s + 1 for s in slides),
+        atoms.append(dict(example_slide=si + 1, bbox=[round(d['x']), round(d['y']), round(d['w']), round(max(d['h'], 4))], name=nm, key=k, bg=slide_bg[si] or '#ffffff', instances=len(v), n_slides=len(slides), all_slides=sorted(s + 1 for s in slides),
                           members=1, size=[round(d['w']), round(max(d['h'], 4))], preview_body=body, kind='atom', places=places,
                           place=(places[0]['x'], places[0]['y']), consistent=round(mc / len(v), 2), examples=examples,
                           slots=[dict(role='text', px=d['runs'][0]['px'], weight=d['runs'][0]['weight'], colour=d['runs'][0]['colour'], fixed=len(examples) <= 1, examples=examples)] if d['runs'] else []))
@@ -542,3 +542,120 @@ def composition(desc, atoms, chrome):
         elif k:
             free.append(dict(role=d['kind'] if d['kind'] != 'panel' else 'text', x=round(d['x']), y=round(d['y']), w=round(d['w']), h=round(d['h']), text=d['text'][:40]))
     return used, free
+
+
+# ------------------------------------------------------------------ seeds and curation
+def _mkey(d):
+    """Role of a member for matching: style, not wording or place."""
+    if d['kind'] in ('text', 'panel') and d['runs']:
+        r = max(d['runs'], key=lambda r: len(r['text']))
+        return ('T', _sizeclass(r['px']), r['weight'], r['colour'])
+    if d['kind'] == 'line':
+        return ('L', round(d['weight']), d['stroke'], 'h' if d['w'] >= d['h'] else 'v')
+    if d['kind'] == 'image':
+        return ('I',)
+    if d['kind'] == 'box':
+        return ('B', d['fill'], d['stroke'], int(d['radius'] > 0))
+    return None
+
+
+def seed_members(descs, slide, bbox):
+    x0, y0, x1, y1 = bbox
+    out = []
+    for d in descs[slide - 1]:
+        cx, cy = d['x'] + d['w'] / 2, d['y'] + d['h'] / 2
+        if x0 <= cx <= x1 and y0 <= cy <= y1 and _mkey(d):
+            out.append(d)
+    return out
+
+
+def find_instances(members, descs, chrome, pos_tol=30, size_tol=0.3):
+    """Anchored search: for every element that looks like the seed's anchor, check that the other members sit where the seed says."""
+    anchor = max(members, key=lambda d: d['w'] * d['h'])
+    akey = _mkey(anchor)
+    inst = []
+    for si, sd in enumerate(descs):
+        used = set()
+        for a in sd:
+            if _mkey(a) != akey or id(a) in used or _is_chrome(a, chrome):
+                continue
+            got = [a]
+            ok = True
+            for m in members:
+                if m is anchor:
+                    continue
+                tx, ty = a['x'] + (m['x'] - anchor['x']), a['y'] + (m['y'] - anchor['y'])
+                hit = next((d for d in sd if d not in got and _mkey(d) == _mkey(m) and abs(d['x'] - tx) <= pos_tol and abs(d['y'] - ty) <= pos_tol
+                            and abs(d['w'] - m['w']) <= size_tol * max(m['w'], 20) + pos_tol), None)
+                if hit is None:
+                    ok = False
+                    break
+                got.append(hit)
+            if ok:
+                inst.append((si, got))
+                used.update(id(g) for g in got)
+    return inst
+
+
+def seeded_component(spec, descs, chrome, slide_bg, conv):
+    mem = seed_members(descs, spec['slide'], spec['bbox'])
+    if not mem:
+        return None
+    inst = find_instances(mem, descs, chrome, size_tol=spec.get('size_tol', 0.3))
+    if not inst:
+        return None
+    first = next((g for si, g in inst if si == spec['slide'] - 1), inst[0][1])
+    x0, y0 = min(d['x'] for d in first), min(d['y'] for d in first)
+    x1, y1 = max(d['x'] + d['w'] for d in first), max(d['y'] + d['h'] for d in first)
+    parts = []
+    for d in first:
+        e = copy.deepcopy(d['raw'])
+        t = e.setdefault('transform', {})
+        t['translateX'] = t.get('translateX', 0) - x0 / PX
+        t['translateY'] = t.get('translateY', 0) - y0 / PX
+        parts.append(conv.element(e, 0))
+    body = '\n'.join(p for p in parts if p).replace('<img src="IMG:', '<img data-missing="IMG:')
+    texts = [d for d in first if d['runs']]
+    slots = []
+    for i, m in enumerate(sorted(texts, key=lambda d: (d['y'], d['x']))):
+        vals = []
+        for si, g in inst:
+            gt = sorted([d for d in g if d['runs']], key=lambda d: (d['y'], d['x']))
+            if i < len(gt):
+                vals.append(gt[i]['text'])
+        mx = max(d['runs'][0]['px'] for d in texts)
+        slots.append(dict(role='title' if m['runs'][0]['px'] >= 0.9 * mx else 'body', px=m['runs'][0]['px'], weight=m['runs'][0]['weight'],
+                          colour=m['runs'][0]['colour'], fixed=len(set(vals)) == 1, examples=sorted(set(vals))[:3]))
+    sl = sorted({si for si, _ in inst})
+    return dict(name=spec['name'], kind='block', group=spec.get('group', 'Blocks'), bg=slide_bg[sl[0]] or '#ffffff', instances=len(inst), n_slides=len(sl),
+                all_slides=[s + 1 for s in sl], members=len(first), size=[round(x1 - x0), round(y1 - y0)], preview_body=body, slots=slots,
+                example_slide=spec['slide'], bbox=[round(x0), round(y0), round(x1 - x0), round(y1 - y0)],
+                provenance='seeded by Claude from slide %d, found %d times on %d slides' % (spec['slide'], len(inst), len(sl)), usage=spec.get('usage', ''))
+
+
+def curate(result, curation, descs, chrome, slide_bg, conv):
+    """Apply a reviewed curation: drop what is not a component, rename and merge what is, add seeded components and verify them."""
+    keep, drop, rename = curation.get('keep', []), set(curation.get('drop', [])), curation.get('rename', {})
+    out, notes = [], []
+    pool = {c['name']: c for c in result['atoms'] + result['components']}
+    for nm in keep:
+        c = pool.get(nm)
+        if not c:
+            notes.append('keep: %s not found' % nm)
+            continue
+        c = dict(c)
+        c['provenance'] = 'derived; kept after review' + ('' if nm not in rename else ', renamed from "%s"' % nm)
+        c['name'] = rename.get(nm, nm)
+        c['group'] = curation.get('groups', {}).get(c['name'], 'Elements' if c.get('kind') == 'atom' else 'Blocks')
+        c['usage'] = curation.get('usage', {}).get(c['name'], '')
+        out.append(c)
+    for spec in curation.get('seeds', []):
+        c = seeded_component(spec, descs, chrome, slide_bg, conv)
+        if not c:
+            notes.append('seed %s: not found' % spec['name'])
+            continue
+        c['verified'] = c['n_slides'] >= 2 or c['instances'] >= 4
+        if not c['verified']:
+            c['provenance'] += ' (thin evidence: kept because the pattern is recognisable by eye)'
+        out.append(c)
+    return out, [dict(name=n, why=w) for n, w in curation.get('drop_reasons', {}).items()], notes

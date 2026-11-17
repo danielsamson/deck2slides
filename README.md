@@ -373,3 +373,14 @@ Whole slides are not components, and the pairs of text boxes found earlier are c
 - deck B: 24 atoms (Eyebrow 100 uses on 98 slides, 98% in the same place; Logo 23; Marker; Display headline; Hairline rules; Short rules; Vertical rules; Full-bleed picture) next to the 7 content blocks, which now sit in a separate "Content blocks" group.
 - `components.composition`: each layout exemplar is expressed as the atoms it uses (and whether each sits in its usual place) plus free content (everything else, with role and position). `Layouts.md` shows, per layout, the composition, how many elements are atoms, and "same atoms" (the share of member slides whose atom set matches the exemplar's); the previews stay showcase pages.
 - Limits: atom names come from rules about size, colour and position (Eyebrow, Footnote, Marker...), so a second atom in the same role is numbered ("Display figure 2") and told apart by style in its README; table-heavy slides produce many small-text atoms of little value; full-bleed pictures and backdrops are atoms with unreachable pictures; a layout's free content is not yet typed into slots with fixed positions, so a layout is described, not generated.
+
+### Review of the components, one at a time
+
+The first atom and block lists were mostly noise (24 atoms and 7 blocks, many duplicates, backgrounds and type slots). Each of the 31 items was looked at against its exemplar slide with the element outlined (`examples/tokens/deckb/review-sheet-1.png`, `-2.png`) and judged. Result, recorded in `components-curation.json`:
+
+- **Kept (8):** Eyebrow, Logo, Marker, Rule (merging hairline and short rules), Side picture, Stat, Label and value, Heading and text.
+- **Dropped:** full-bleed pictures (slide backgrounds), the large display headline, figure and title slots (type styles and layout slots), paragraph text that moves around, vertical rules (chart gridlines and bars), the panel shape (part of the progress rule).
+- **Merged:** Avatar, Name and role and Heading and text 2 are one thing, a Team member; Swatch was a keyboard key cap.
+- **Missed by the derivation, found by eye and then searched for** (`components.seeded_component`: point at an example, take the elements inside the box, find every place the same elements recur in the same arrangement): Team member (8 on one slide), Link button (2 slides), Key cap (3 on one slide), Progress rule (1 match, loosened for width), Stat column (3 on one slide). Seeds with thin evidence say so in their README.
+
+The derive-then-review split is therefore: derivation finds candidates and repeats, a person (or Claude, looking) says what is a component, and the seeding step turns what the person points at into something verified against the deck. Fifteen components remain, against 31 candidates.

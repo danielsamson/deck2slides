@@ -85,6 +85,18 @@ def tokens_cmd(a):
         json.dump({k: v for k, v in structural.items() if k not in ('components', 'atoms')} | {'components': [{k: v for k, v in c.items() if k != 'preview_body'} for c in structural['components']], 'atoms': [{k: v for k, v in c.items() if k not in ('preview_body', 'key')} for c in structural['atoms']]},
                   open(os.path.join(a.out, 'components.json'), 'w'), indent=1, default=str)
         open(os.path.join(a.out, 'components-sheet.html'), 'w').write(componentsheet.sheet(structural))
+    if a.curation and structural:
+        D_ = components.flatten  # noqa: keep import used
+        data_c = json.load(open(a.full))['content']['slides']
+        descs_c = [[components.describe(e) for e in components.flatten(s)] for s in data_c]
+        chrome_c = components.find_chrome(descs_c, len(data_c))
+        from d2s import gslides2claude as _G
+        conv_c = _G.Conv({}, '/tmp/d2s-fontcache')
+        curated, dropped, notes = components.curate(structural, json.load(open(a.curation)), descs_c, chrome_c, structural['slide_bg'], conv_c)
+        structural['atoms'] = [c for c in curated if c.get('kind') == 'atom']
+        structural['components'] = [c for c in curated if c.get('kind') != 'atom']
+        structural['curation_notes'] = notes
+        print('curation notes:', notes)
     lay_files = None
     if a.catalogue and a.full:
         from d2s import layouts as LY
@@ -124,6 +136,6 @@ c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
-c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
+c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--curation'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)
