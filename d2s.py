@@ -11,7 +11,7 @@
 """
 import argparse, json, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from d2s import config as C, fonts as F, pptx_build, bundles, gslides, imgdiff, calibrate, pptx2claude, tokens, dsbuild
+from d2s import config as C, fonts as F, pptx_build, bundles, gslides, imgdiff, calibrate, pptx2claude, tokens, dsbuild, components, componentsheet
 
 def extract(deck, work, assets=None, gifs=None):
     os.makedirs(work, exist_ok=True)
@@ -79,8 +79,14 @@ def tokens_cmd(a):
     json.dump(tokens.to_dtcg(d, name), open(os.path.join(a.out, 'tokens.dtcg.json'), 'w'), indent=1, default=float)
     open(os.path.join(a.out, 'tokens.css'), 'w').write(tokens.to_css(d))
     open(os.path.join(a.out, 'DESIGN.md'), 'w').write(tokens.to_markdown(d, name))
+    structural = None
+    if a.full:
+        structural = components.extract(a.full, a.masters)
+        json.dump({k: v for k, v in structural.items() if k != 'components'} | {'components': [{k: v for k, v in c.items() if k != 'preview_body'} for c in structural['components']]},
+                  open(os.path.join(a.out, 'components.json'), 'w'), indent=1, default=str)
+        open(os.path.join(a.out, 'components-sheet.html'), 'w').write(componentsheet.sheet(structural))
     if a.build:
-        rep = dsbuild.build(model, d, name, os.path.join(a.out, 'system'), a.tagline, fetch=not a.no_fonts)
+        rep = dsbuild.build(model, d, name, os.path.join(a.out, 'system'), a.tagline, fetch=not a.no_fonts, structural=structural)
         json.dump(rep, open(os.path.join(a.out, 'build-report.json'), 'w'), indent=1)
         print('design system tree:', os.path.join(a.out, 'system', 'project'))
         print(json.dumps({k: v for k, v in rep.items() if k != 'files'}, indent=1))
@@ -110,6 +116,6 @@ c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
-c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
+c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)

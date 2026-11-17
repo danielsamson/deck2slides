@@ -347,7 +347,44 @@ def readme(d, tk, comps, fails, missing, name):
 
 
 # ---------------------------------------------------------------- assemble
-def build(model, d, name, outdir, tagline=None, fetch=True):
+def structural_files(res, tk):
+    """Component previews/READMEs and a Layouts section from d2s.components.extract output."""
+    import re as _re
+    hexmap = {}
+    for t in tk['color']['tokens']:
+        v = t['value'][tk['color']['themes'][0]['id']] if isinstance(t['value'], dict) else t['value']
+        hexmap.setdefault(v.lower(), t['name'])
+
+    def tokenise(body):
+        return _re.sub(r'(color|background|border-top|border):([^;"]*?)(#[0-9a-fA-F]{6})', lambda m: '%s:%svar(--%s,%s)' % (m.group(1), m.group(2), hexmap[m.group(3).lower()], m.group(3)) if m.group(3).lower() in hexmap else m.group(0), body)
+    out = {}
+    for c in res['components']:
+        w, h = c['size']
+        nm = ''.join(w[:1].upper() + w[1:] for w in c['name'].split())   # components/<Comp> must be an ASCII identifier
+        bg = c.get('bg', '#ffffff')
+        bgv = 'var(--%s,%s)' % (hexmap[bg.lower()], bg) if bg.lower() in hexmap else bg
+        out['components/%s/preview.html' % nm] = (
+            '<!-- @dsCard group="Blocks" height=%d width=%d subtitle="%d instances on %d slides" -->\n<style>body{margin:0;padding:24px;background:%s}'
+            '.stage{position:relative;width:%dpx;height:%dpx}</style>\n<div class="stage">\n%s\n</div>\n' % (
+                min(h + 48, 900), w + 48, c['instances'], c['n_slides'], bgv, w, h, tokenise(c['preview_body'])))
+        sl = c['slots']
+        lines = ['%s is a %dx%d px block with %d member%s, found %d times on %d slide%s of the source.' % (
+            c['name'], w, h, c['members'], '' if c['members'] == 1 else 's', c['instances'], c['n_slides'], '' if c['n_slides'] == 1 else 's'), '']
+        if sl:
+            lines.append('The consumer provides the text for each slot; fixed text stays as it is in the source.\n')
+            for s in sl:
+                lines.append('- **%s** (%gpx, weight %s, %s): %s' % (s['role'], s['px'], s['weight'], s['colour'],
+                             ('fixed text, always "%s"' % s['examples'][0][:60]) if s['fixed'] else 'slot; for example %s' % ', '.join('"%s"' % e[:40] for e in s['examples'][:3])))
+        lines += ['', '- Do: keep the members in the same relative places and the type sizes above.', '- Do not: add members or change the type scale.']
+        out['components/%s/README.md' % nm] = '\n'.join(lines) + '\n'
+    L = ['# Layouts', '', 'Slides grouped by what they contain (background, pictures, headline size, number of text blocks, components). Slide numbers are in the source deck.', '']
+    for lay in res['layouts'][:12]:
+        L.append('- **%s**: %d slides, e.g. %s' % (lay['name'], lay['count'], ', '.join(str(s) for s in lay['slides'][:5])))
+    out['Layouts.md'] = '\n'.join(L) + '\n'
+    return out
+
+
+def build(model, d, name, outdir, tagline=None, fetch=True, structural=None):
     cache = os.path.join(outdir, '.fontcache')
     proj = os.path.join(outdir, PROJECT)
     import shutil
@@ -355,8 +392,9 @@ def build(model, d, name, outdir, tagline=None, fetch=True):
     os.makedirs(proj, exist_ok=True)
     tk, files, missing, fails, warn = build_tokens(d, name, cache, proj, fetch)
     problems = T.validate_claude_ds(tk)
-    comps = find_components(model, d, tk)
-    cfiles = component_files(comps, tk)
+    comps = find_components(model, d, tk) if not structural else {}
+    cfiles = component_files(comps, tk) if not structural else {k: v for k, v in structural_files(structural, tk).items() if k.startswith('components/')}
+    extra = {} if not structural else {k: v for k, v in structural_files(structural, tk).items() if not k.startswith('components/')}
     tag = tagline or '%d colours, %d type sizes, %s.' % (
         len(d['colour']['roles']), len(d['type']['sizes']),
         ('a %d-column grid' % d['grid']['columns']) if d['grid'].get('columns') else 'margins of %gpx' % d['grid'].get('margin_left', 0))
@@ -370,11 +408,12 @@ def build(model, d, name, outdir, tagline=None, fetch=True):
     out = {'design-system.json': json.dumps(idx, indent=1), 'tokens.json': json.dumps(tk, indent=1, default=float),
            'README.md': readme(d, tk, comps, fails, missing, name)}
     out.update(cfiles)
+    out.update(extra)
     for rel, text in out.items():
         p = os.path.join(proj, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, 'w').write(text)
-    return dict(confidence=d.get('confidence'), problems=problems, components=list(comps), cover=cinfo, contrast_fails=fails, fonts=sorted(files.values()),
+    return dict(confidence=d.get('confidence'), problems=problems, components=list(comps) if not structural else [(c['name'], c['instances'], c['n_slides']) for c in structural['components']], cover=cinfo, contrast_fails=fails, fonts=sorted(files.values()),
                 missing_fonts=missing, warnings=warn, files=sorted(list(out) + list(files.values())))
 
 
