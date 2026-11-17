@@ -138,7 +138,7 @@ def build_tokens(d, name, cache, outdir, fetch=True):
     tk['color']['tokens'] += on
     # fonts
     SYSTEM = {'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Verdana', 'Tahoma', 'Courier New', 'Trebuchet MS', 'Calibri', 'Cambria', 'Segoe UI'}
-    wanted = {(f, w['weight']) for w in ty.get('weights', []) for f in [w['font']] if f and f not in SYSTEM}
+    wanted = {(f, w['weight']) for w in ty.get('weights', []) for f in [w['font']] if f and f not in SYSTEM and w['share'] >= 0.01}   # a face under 1% of the text is not worth a file
     files, missing = ({}, []) if not fetch else fetch_font_files(wanted, outdir, cache)
     tk['type']['fonts'] = [{'family': f, 'file': p, 'weight': str(w)} for (f, w), p in sorted(files.items())]
     if missing:
@@ -301,7 +301,7 @@ def cover(d, tk, name, tagline):
 
 
 # ---------------------------------------------------------------- README
-def readme(d, tk, comps, fails, missing, name):
+def readme(d, tk, comps, fails, missing, name, structural=None):
     cols = {t['name']: t['value'] for t in tk['color']['tokens']}
     L = []
     L.append('## Colour\n')
@@ -317,7 +317,7 @@ def readme(d, tk, comps, fails, missing, name):
         L.append('- Contrast below 4.5:1 in the source palette, kept exact: %s.' % '; '.join(fails))
     L.append('\n## Type\n')
     for g in tk['type']['groups']:
-        L.append('- %s styles in %s: %s.' % (g['name'], tk['type']['families'][g['family']].split(',')[0].strip('"'), ', '.join('`%s` (%s)' % (s['name'], s['fontSize']) for s in g['styles'])))
+        L.append('- %s styles in %s: %s.' % ('Other' if g['name'].startswith('Extra') else g['name'], tk['type']['families'][g['family']].split(',')[0].strip('"'), ', '.join('`%s` (%s)' % (s['name'], s['fontSize']) for s in g['styles'])))
     if missing:
         L.append('- No font file is bundled for %s; load it from your own licence or fall back to the stack.' % ', '.join(missing))
     g = d['grid']
@@ -339,7 +339,19 @@ def readme(d, tk, comps, fails, missing, name):
         L.append('- Shadows: %s.' % ', '.join('`%s`' % t['name'] for t in tk['shadow']['tokens']))
     else:
         L.append('- The source uses no shadows; do not add any.')
-    if comps:
+    if structural:
+        L.append('\n## Components\n')
+        for grp in ('Elements', 'Blocks'):
+            items = [c for c in structural['components'] + structural['atoms'] if c.get('group', 'Blocks' if c.get('kind') != 'atom' else 'Elements') == grp]
+            if items:
+                L.append('%s:' % grp)
+                for c in items:
+                    L.append('- `%s`: %s' % (''.join(w[:1].upper() + w[1:] for w in c['name'].split()), c.get('usage') or 'recurs %d times on %d slides.' % (c['instances'], c['n_slides'])))
+        ls = structural.get('layout_status')
+        if ls:
+            L.append('\n## Layouts\n')
+            L.append('Whole-slide templates are in `Layouts.md`, not components. ' + '; '.join('%s (%s)' % (n, s) for n, s in ls) + '. Use only verified layouts as templates; treat the rest as examples.')
+    elif comps:
         L.append('\n## Components\n')
         for nm, c in comps.items():
             L.append('- `%s`: recurring %dx%d px shape. See its guidelines.' % (nm, c['w'], c['h']))
@@ -497,7 +509,7 @@ def build(model, d, name, outdir, tagline=None, fetch=True, structural=None, lay
            "assetGroups": {}, "blobs": {}, "docs": {"readme": "project/README.md", "sections": []},
            "lastChange": {"by": "Claude", "at": now, "via": "deck2slides tokens", "note": "Derived from a deck"}}
     out = {'design-system.json': json.dumps(idx, indent=1), 'tokens.json': json.dumps(tk, indent=1, default=float),
-           'README.md': readme(d, tk, comps, fails, missing, name)}
+           'README.md': readme(d, tk, comps, fails, missing, name, structural)}
     out.update(cfiles)
     out.update(extra)
     if layouts:

@@ -104,6 +104,8 @@ def tokens_cmd(a):
         cat_ = LY.build_catalogue(json.load(open(a.catalogue)), descs_, chrome_, (structural or {}).get('atoms'))
         json.dump(cat_, open(os.path.join(a.out, 'layout-catalogue-verified.json'), 'w'), indent=1, default=str)
         ds_tokens = tokens.to_claude_ds(d, name)
+        if structural is not None:
+            structural['layout_status'] = [(e['name'], e['status']) for e in cat_]
         lay_files = dsbuild.layout_files(cat_, a.full, a.masters, ds_tokens, (structural or {}).get('components'))
     if a.build:
         rep = dsbuild.build(model, d, name, os.path.join(a.out, 'system'), a.tagline, fetch=not a.no_fonts, structural=structural, layouts=lay_files)
