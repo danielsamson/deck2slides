@@ -19,8 +19,7 @@ Offline regression: the pitch deck (28 slides) rebuilt with this package plus `e
 
 **Known constraint:** file-reference uploads (Drive `create_file` with `base64Content = sha256:<hash>:<absolute path>`) work in some
 sessions and not others; when they do not, a session that has them must do the upload. When they work, the file must sit **inside the
-session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and be under
-about 0.85 MB. Hand-typed base64 is not dependable.
+session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 2.1 MB file uploaded fine (the old 0.85 MB figure was not reproduced; the real limit is not found). Hand-typed base64 is not dependable.
 
 **Other measured constraints:** the Slides MCP rate-limits thumbnail reads ("Expensive read requests per minute", about 27 in a
 minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
@@ -47,6 +46,24 @@ real pitch-deck pictures; the pitch deck slides not re-measured on the final bui
 re-templating into company layouts (route C).
 
 **Not possible in this approach at all:** real placeholders and master/theme linkage (nothing in the Claude deck says which box is a title), so a layout change in Slides will not re-flow text.
+
+## Experiments on closing the gaps (measured, converter not yet changed to use them)
+
+`test-decks/experiments/make_experiments.py` builds three PPTX files that were uploaded and read back through the Slides API and thumbnails.
+All results are for Google's PPTX import and `replaceImage`; **none of this is wired into `d2s.py convert` yet**.
+
+| Gap | Experiment | Result |
+|---|---|---|
+| Gradients | `gradFill`: linear 90 deg, linear 45 deg with 3 stops, radial (`path="circle"`), linear with alpha stops, on a rectangle, a rounded rectangle and an ellipse | **All six import natively and render correctly**, including alpha stops. Editable gradient fills in Slides |
+| clip-path | `custGeom` polygon (triangle, pentagon) as shape, with solid and gradient fill; a pentagon `custGeom` on a **picture** | Shapes import as freeform shapes. **The picture clip survives `replaceImage`** (noise picture swapped in, still clipped to the pentagon) |
+| Double border | `a:ln cmpd="dbl"` and `"tri"`, plus dashed and dotted | **Imported and rendered** (double, triple, dashed, dotted) |
+| Picture opacity | A real picture embedded in the PPTX with `alphaModFix` 50%, with and without rounded mask and shadow, plus a rotated rounded mask | **All native and correct.** So opacity is possible if the picture is embedded in the uploaded PPTX instead of swapped in with `replaceImage` (which drops it) |
+| Upload size | 2.1 MB PPTX with a 2 MB picture | Uploaded and converted with the picture intact. The 0.85 MB cap is **not reproduced**; the real cap is unknown. This may allow embedding most pictures directly, which would also make opacity, shadow, mask and clip native with no second step |
+| Template layouts | A PPTX with a renamed layout, a coloured master background, a layout bar and a title placeholder | **Imported intact:** layout name kept, master background and layout bar rendered, and the slide's title is a real placeholder bound to the layout (`parentObjectId` set). So a deck built on a company template PPTX should keep real layouts and placeholders |
+| Blur, blend modes, group opacity, overflow:hidden | not run | still need compute or rasterize strategies (see the brainstorm) |
+
+What this changes: gradients, clip-path, double borders and picture opacity can become native instead of lost, and layouts are possible. Not tested: gradient
+text, `radial` positions other than centre, clip-paths with curves, large pictures near the real size cap, a real company template with theme fonts.
 
 ## Ways of working (pick one per deck)
 
