@@ -12,7 +12,7 @@ How: lay every slide out in headless Chromium at 1920x1080 (`js/extract.cjs`) ->
 Verified against Google in the last session (Inter and Bricolage Grotesque for the feature deck; Bricolage, Instrument Sans, Inter and
 Fredoka for the pitch deck regression). Numbers are in "Test results" below. **Not verified:** other fonts, animated GIF playback,
 GIFs over the upload cap (link route), inline SVG pictures, the pitch deck with its real pictures (only text and shapes were compared),
-slides 1-5, 8-9, 12-14, 17-23, 25-26, 28 of the pitch deck after the final code change (they were compared on an earlier build only).
+(all 28 pitch slides were measured on the final code).
 
 Offline regression: the pitch deck (28 slides) rebuilt with this package plus `examples/pitch-legacy-calibration.json` gives 819 shapes,
 803 identical to the old build in position, size, text and line spacing.
@@ -43,7 +43,7 @@ cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 
 **Does not work (lost in the export; the converter prints a warning for each):** blend modes over anything but a flat colour,
 `background-image` other than a single gradient, rounded `inset()` clips, animation and transitions (not attempted).
 
-**Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG; real pitch-deck pictures; the pitch deck slides not re-measured on the final build;
+**Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG; real pitch-deck pictures; 
 gradient text, off-centre radial gradients; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B); re-templating into company layouts (route C: see 'Using a company template').
 
 **Needs a template and tags:** real placeholders and master/theme linkage (nothing in a plain Claude deck says which box is a title): use `--template` with `data-layout` and `data-role` (see above).
@@ -186,11 +186,10 @@ alignment 0.00 (0), wrapping 0.51 (3), corner-radius 0.52 (1), borders 0.52 (0),
 text-styles 1.83 (4: the mixed-size line wraps in Google), layering 3.06 (clip and group opacity), unsupported 19.50 (dropped features), composite 0.33 (0).
 7 of 20 slides under 0.15%.
 
-**Pitch deck regression** (text and shapes only; real pictures were not available): committed OLD pipeline: 27 of 28 slides under 0.15%, 8 blocks >4 px.
-Committed NEW pipeline file: 23 of 28 and 30 blocks, but that was caused by its opaque grey placeholder pictures covering the slides in the Google render
-(proved by looking at the render), not by text placement. After making the placeholder transparent and rebuilding with the current code, the six
-slides re-measured (country, goal, journey, echo, marker-kv, toy) give the **same numbers as OLD** (offsets 5/8/2/9/1/2 px) and `toy` is 0.00% against 1.20% for OLD.
-The other 22 slides were not re-measured on the final build.
+**Pitch deck regression** (final code, text and shapes; the real pictures were not available, so 189 dummy grey pictures were embedded and masked out of the comparison; all 28 slides, 2000 px thumbnails):
+committed OLD pipeline 27 of 28 slides under 0.15% (worst `toy` 1.20%, pixel difference summed over the deck 1.39), 0 text blocks more than 4 px off; **current code 27 of 28 under 0.15% (worst `toy-cast` 0.28%, sum 0.52), 0 text blocks more than 4 px off**.
+Along the way: an earlier "30 blocks off" for the committed NEW file was an artifact (its opaque grey placeholder pictures covered the slides; proved by looking at the render, fixed by making the placeholder transparent),
+and a later scare (18 blocks off) was the text-offset measurement not masking embedded dummy pictures (fixed in `imgdiff.text_offsets`; the PPTX text properties were identical). The real deck produces **no warnings**: it uses none of the unsupported CSS.
 
 Code changes made from these tests: true `ellipse` for 50% radius, widening for text that overflows its box, picture shadow on the picture, transparent placeholder,
 opacity request removed, 4-line calibration deck, warnings for dropped CSS, `report` JSON fix.

@@ -30,9 +30,11 @@ def ink_bbox(I, box, color, tol=90):
     if reg.sum() < 12: return None
     ys = np.where(reg.any(1))[0]; xs = np.where(reg.any(0))[0]; return x0 + xs[0], y0 + ys[0], x0 + xs[-1], y0 + ys[-1]
 
-def text_offsets(slide, ref_png, google_png, margin=14):
+def text_offsets(slide, ref_png, google_png, margin=14, ignore=()):
     """For each unrotated, opaque text block: how far the ink moved (Google minus browser): (dL, dT, dR, dB) in 1920 px."""
     A, G = load(ref_png), load(google_png); rows = []
+    for x0, y0, x1, y1 in ignore:      # picture areas (embedded or not) are blanked in both images so they cannot be mistaken for ink
+        for I in (A, G): I[max(0, int(y0)):int(y1) + 1, max(0, int(x0)):int(x1) + 1] = 255
     for it in slide['items']:
         t = it.get('text')
         if not t or abs(it['rot']) > 0.01: continue
@@ -60,7 +62,7 @@ def report(workdir, thumbdir, ref='noimg', out_dir=None, only=None, ignore_pictu
         if not os.path.exists(tp) or (only and s['id'] not in only): continue
         rp = '%s/%s_%02d.png' % (workdir, ref, n)
         d = slide_diff(rp, tp, picture_boxes(s) if ignore_pictures else (), out_png=(out_dir and '%s/d%02d_%s.png' % (out_dir, n, s['id'])))
-        offs = [r for r in text_offsets(s, rp, tp) if r['d']]
+        offs = [r for r in text_offsets(s, rp, tp, ignore=picture_boxes(s) if ignore_pictures else ()) if r['d']]
         mx = [max(abs(v) for v in r['d']) for r in offs]
         res.append(dict(slide=n, id=s['id'], pct=round(d['pct'], 3), regions=len(d['regions']), blocks=len(offs), max_off=max(mx) if mx else 0,
                         mean_off=round(float(np.mean(mx)), 2) if mx else 0, bad=sum(1 for v in mx if v > 4), top=[r for r in d['regions'][:3]]))
