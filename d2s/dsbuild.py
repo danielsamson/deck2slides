@@ -301,7 +301,7 @@ def cover(d, tk, name, tagline):
 
 
 # ---------------------------------------------------------------- README
-def readme(d, tk, comps, fails, missing, name, structural=None):
+def readme(d, tk, comps, fails, missing, name, structural=None, recipes=None):
     cols = {t['name']: t['value'] for t in tk['color']['tokens']}
     L = []
     L.append('## Colour\n')
@@ -339,7 +339,28 @@ def readme(d, tk, comps, fails, missing, name, structural=None):
         L.append('- Shadows: %s.' % ', '.join('`%s`' % t['name'] for t in tk['shadow']['tokens']))
     else:
         L.append('- The source uses no shadows; do not add any.')
-    if structural:
+    if structural and recipes:
+        L.append('\n## How a page is built\n')
+        L.append('A slide is page furniture, content in a few text roles, media, and sometimes a pattern. Pick a recipe in `Recipes.md` (machine form: `recipes.json`), fill its slots within their limits, and keep furniture where the recipe puts it.')
+        el = [c for c in structural['atoms'] + structural['components'] if c.get('group') == 'Elements']
+        pt = [c for c in structural['atoms'] + structural['components'] if c.get('group') == 'Blocks']
+        if el:
+            L.append('\n### Page furniture and media\n')
+            for c in el:
+                L.append('- `%s`: %s' % (''.join(w[:1].upper() + w[1:] for w in c['name'].split()), c.get('usage') or ''))
+        L.append('\n### Content roles\n')
+        for k, v in recipes['roles'].items():
+            L.append('- %s: %s' % (k.capitalize(), v))
+        if pt:
+            L.append('\n### Patterns\n')
+            for c in pt:
+                L.append('- `%s`: %s' % (''.join(w[:1].upper() + w[1:] for w in c['name'].split()), c.get('usage') or ''))
+        L.append('\n### Recipes\n')
+        for rr in recipes['recipes']:
+            res = recipes['results'].get(rr['id'], {})
+            L.append('- **%s** (%s theme): %s Recreates %d source slide%s, %.1f%% of pixels differ on average.' % (rr['name'], rr['theme'], rr['usage'], len(res), '' if len(res) == 1 else 's', sum(res.values()) / max(len(res), 1)))
+        L.append('\nNothing outside these recipes is verified. For any other slide, use the tokens, the roles and the furniture above, and say that no recipe covers it.')
+    elif structural:
         L.append('\n## Components\n')
         for grp in ('Elements', 'Blocks'):
             items = [c for c in structural['components'] + structural['atoms'] if c.get('group', 'Blocks' if c.get('kind') != 'atom' else 'Elements') == grp]
@@ -489,7 +510,7 @@ def layout_files(res, slides_json, masters_json, tk, comps=None):
     return out
 
 
-def build(model, d, name, outdir, tagline=None, fetch=True, structural=None, layouts=None):
+def build(model, d, name, outdir, tagline=None, fetch=True, structural=None, layouts=None, recipes=None):
     cache = os.path.join(outdir, '.fontcache')
     proj = os.path.join(outdir, PROJECT)
     import shutil
@@ -511,9 +532,9 @@ def build(model, d, name, outdir, tagline=None, fetch=True, structural=None, lay
            "assetGroups": {}, "blobs": {}, "docs": {"readme": "project/README.md", "sections": []},
            "lastChange": {"by": "Claude", "at": now, "via": "deck2slides tokens", "note": "Derived from a deck"}}
     out = {'design-system.json': json.dumps(idx, indent=1), 'tokens.json': json.dumps(tk, indent=1, default=float),
-           'README.md': readme(d, tk, comps, fails, missing, name, structural)}
+           'README.md': readme(d, tk, comps, fails, missing, name, structural, recipes)}
     out.update(cfiles)
-    out.update(extra)
+    out.update({k: v for k, v in extra.items() if not (recipes and k == 'Layouts.md')})   # recipes replace the layout catalogue
     if layouts:
         out.update(layouts)
     for rel, text in out.items():
