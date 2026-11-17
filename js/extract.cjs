@@ -100,9 +100,9 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       }
       return { out, inheritR };
     };
-    let svgN = 0;
+    let svgN = 0; const rasterId = { n: 0 };
     return [...document.querySelectorAll('section')].map((sec, si) => {
-      const R = sec.getBoundingClientRect(); const warns = []; const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), radius: 0, bg: 1 }];
+      const R = sec.getBoundingClientRect(); const warns = []; const rasterSkip = new Set(); const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), radius: 0, bg: 1 }];
       const textOwner = new Map();
       // Which element owns each run of text: the nearest non-inline ancestor.
       const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT); let n;
@@ -145,8 +145,22 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       const ew = document.createTreeWalker(sec, NodeFilter.SHOW_ELEMENT, { acceptNode: e => (e.tagName === 'ASIDE' || e.closest('svg') && e.tagName !== 'svg') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT }); let el;
       while ((el = ew.nextNode())) {
         const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+        if (rasterSkip.has(el)) continue;
         const g = geom(el, R), op = opOf(el); if (!g.w && !g.h) continue;
-        { const w = [];  if (cs.filter !== 'none') w.push('filter (' + cs.filter.split('(')[0] + ') dropped'); if (cs.mixBlendMode !== 'normal') w.push('mix-blend-mode dropped'); if (+cs.opacity < 1 && el.children.length > 1) w.push('group opacity is applied per child (overlaps look darker)');
+        { // elements Google cannot draw natively (blur, group opacity over overlapping children) are rendered alone to a transparent picture
+          const blur = /blur\(/.test(cs.filter); let grp = false;
+          if (!blur && +cs.opacity < 1 && el.children.length > 1) { const rs = [...el.querySelectorAll('*')].filter(d => { const c3 = getComputedStyle(d); const bg3 = col(c3.backgroundColor); return d.tagName === 'IMG' || (bg3 && bg3.a > 0); }).map(d => d.getBoundingClientRect()); for (let a = 0; a < rs.length && !grp; a++) for (let b2 = a + 1; b2 < rs.length; b2++) if (Math.min(rs[a].right, rs[b2].right) - Math.max(rs[a].left, rs[b2].left) > 1 && Math.min(rs[a].bottom, rs[b2].bottom) - Math.max(rs[a].top, rs[b2].top) > 1) { grp = true; break; } }
+          if (blur || grp) {
+            const all = [el, ...el.querySelectorAll('*')]; for (const d of all) if (d !== el) rasterSkip.add(d);
+            let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const d of all) { const r = d.getBoundingClientRect(); if (!r.width && !r.height) continue; x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
+            const sg = blur ? parseFloat(/blur\(([\d.]+)px/.exec(cs.filter)[1]) : 0, m = Math.ceil(sg * 3);
+            x0 -= m; y0 -= m; x1 += m; y1 += m; const rid = 'r_' + (rasterId.n++); el.setAttribute('data-gs-r', rid);
+            warns.push(el.tagName.toLowerCase() + ': ' + (blur ? 'blur' : 'group opacity over overlapping children') + ' drawn as a picture' + (el.textContent.trim() ? ' (its text is part of the picture)' : ''));
+            items.push({ type: 'img', src: 'RASTER:' + rid, nw: x1 - x0, nh: y1 - y0, fit: 'fill', radius: 0, shadow: null, op: 1, pad: null, bw: null, cx: (x0 + x1) / 2 - R.left, cy: (y0 + y1) / 2 - R.top, w: x1 - x0, h: y1 - y0, rot: 0, page: { x: x0 + window.scrollX, y: y0 + window.scrollY, w: x1 - x0, h: y1 - y0 } });
+            continue;
+          }
+        }
+        { const w = [];  if (cs.filter !== 'none' && !/blur\(/.test(cs.filter)) w.push('filter (' + cs.filter.split('(')[0] + ') dropped'); if (cs.mixBlendMode !== 'normal') w.push('mix-blend-mode dropped'); if (+cs.opacity < 1 && el.children.length > 1) w.push('group opacity is applied per child (overlaps look darker)');
           if (w.length) warns.push(el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : '') + ': ' + w.join(', ')); }
         const pad = { l: parseFloat(cs.paddingLeft), r: parseFloat(cs.paddingRight), t: parseFloat(cs.paddingTop), b: parseFloat(cs.paddingBottom) };
         const bw = { l: parseFloat(cs.borderLeftWidth), r: parseFloat(cs.borderRightWidth), t: parseFloat(cs.borderTopWidth), b: parseFloat(cs.borderBottomWidth) };
@@ -182,8 +196,25 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       return { i: si, id: sec.id, warns, items: items.concat(links) };
     });
   });
-  await p.addStyleTag({ content: 'img,svg{visibility:hidden !important}' });
+  const hideSt = await p.addStyleTag({ content: 'img,svg{visibility:hidden !important}' });
   for (let i = 0; i < secs.length; i++) await secs[i].screenshot({ path: path.join(OUT, 'noimg_' + String(i + 1).padStart(2, '0') + '.png') });
+  await hideSt.evaluate(e => e.remove());
+  // raster islands: render each tagged element (and its children) alone on a transparent page at 2x
+  { const isl = []; for (const d of data) for (const it of d.items) if (typeof it.src === 'string' && it.src.startsWith('RASTER:')) isl.push(it);
+    if (isl.length) {
+      fs.mkdirSync(path.join(OUT, 'raster'), { recursive: true });
+      const tags = await p.evaluate(() => [...document.querySelectorAll('*')].map((e, i) => e.hasAttribute('data-gs-r') ? [i, e.getAttribute('data-gs-r')] : null).filter(Boolean));
+      const p3 = await b.newPage({ viewport: { width: SLIDE_W, height: SLIDE_H }, deviceScaleFactor: 2 });
+      await p3.goto('file://' + path.join(OUT, 'preview.html')); await p3.waitForTimeout(2500); await p3.evaluate(() => document.fonts.ready);
+      await p3.evaluate(tg => { const all = document.querySelectorAll('*'); for (const [i, rid] of tg) all[i].setAttribute('data-gs-id', rid); }, tags);
+      await p3.addStyleTag({ content: 'html,body{background:transparent !important}body *{visibility:hidden !important}[data-gs-r],[data-gs-r] *{visibility:visible !important}*{animation:none !important}' });
+      for (const it of isl) {
+        const rid = it.src.slice(7); const f = path.join(OUT, 'raster', rid + '.png');
+        await p3.evaluate(r => document.querySelector('[data-gs-id="' + r + '"]').setAttribute('data-gs-r', 'on'), rid);
+        await p3.screenshot({ path: f, clip: { x: it.page.x, y: it.page.y, width: it.page.w, height: it.page.h }, fullPage: true, omitBackground: true });
+        await p3.evaluate(r => document.querySelector('[data-gs-id="' + r + '"]').removeAttribute('data-gs-r'), rid);
+        it.src = f; delete it.page; }
+      await p3.close(); } }
   // Inline SVG (icons, the branching-lives drawing) has no native equivalent in Slides: each becomes a small transparent picture.
   const p2 = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 3 });
   for (const d of data) for (const it of d.items) {

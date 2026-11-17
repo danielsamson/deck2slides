@@ -38,7 +38,9 @@ cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 
 - Pictures beyond the upload budget (about 2.7 MB of images per deck) are placeholders filled by `replaceImage` (second step, 30-minute links) and lose opacity and clip fit.
 - GIFs always go through the placeholder route; over the cap they need a Drive folder shared by link (manual).
 
-**Does not work (lost in the export; the converter prints a warning for each):** blur filters, blend modes, group opacity (overlaps look darker),
+**Drawn as a picture instead of natively (warned; its text is no longer editable):** blur, and group opacity over overlapping children.
+
+**Does not work (lost in the export; the converter prints a warning for each):** blend modes over anything but a flat colour,
 `background-image` other than a single gradient, rounded `inset()` clips, animation and transitions (not attempted).
 
 **Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG; real pitch-deck pictures; the pitch deck slides not re-measured on the final build;
@@ -127,7 +129,7 @@ measurement, not re-measured; *failed* = tried and does not work.
 | 11 | GIF: < 1000 frames, settled first frame, plain rectangle (mask gives the corners), by link if over the upload cap (about 3 MB) | `gif` slide: rounded masks and `replaceImage` work for a small GIF; first frame only, playback not checked | partly verified |
 | 12 | Inline SVG is rasterised to a transparent PNG | - | carried over, untested |
 | 13 | Shadows, alpha, rotation, colours, borders | slides `shadows`, `alpha`, `rotation`, `colour`: 0.00% pixel difference; `borders` 0.52% (solid/dashed/dotted drawn, not inspected one by one) | **verified** |
-| 14 | **Now native (verified):** linear and radial gradients (angle, keywords, px and % stops, alpha stops; radial assumes the centre), `clip-path` polygon / circle / ellipse / inset (square corners), `overflow:hidden` clipping of shapes and pictures (curves become polygons with 32 points per quarter circle, about 0.1 px), double border (`cmpd=dbl`), 50% radius as a true ellipse. **Still lost, and warned at convert time:** blur, blend modes, group opacity (applied per child, overlaps look darker), `background-image` that is not a single gradient, `inset(... round ...)` (drawn square), `radial-gradient` positions other than the centre | `unsupported` 19.5% -> 0.9%; `layering` 3.1% -> 1.4%; `native-effects` 0.00% | **verified** |
+| 14 | **Now native (verified):** linear and radial gradients (angle, keywords, px and % stops, alpha stops; radial assumes the centre), `clip-path` polygon / circle / ellipse / inset (square corners), `overflow:hidden` clipping of shapes and pictures (curves become polygons with 32 points per quarter circle, about 0.1 px), double border (`cmpd=dbl`), 50% radius as a true ellipse. **Drawn as a picture (raster island), warned at convert time:** `filter: blur()` and group opacity over overlapping children - the element and its children are rendered alone to a transparent PNG at 2x and embedded, so any text inside them stops being editable. **Still lost, warned:** blend modes (the probe happened to match because it multiplied over a flat colour), `background-image` that is not a single gradient, `inset(... round ...)` (drawn square), radial-gradient positions other than the centre | `unsupported` 19.5% -> 0.00%; `layering` 3.1% -> 0.00%; `native-effects` 0.00% | **verified** |
 | 15 | Upload size: a 3.03 MB PPTX uploads; a 6 MB one is refused by the connector (4.2 MB per call, about 3.1 MB for files). The old 0.85 MB figure was wrong | cap tests | **verified** |
 | 16 | Text with `line-height` above 2.0 whose box is one line high (the "line-height = box height" centring idiom) is centred as one natural line (`anchor=middle`); other first-line offsets are extrapolated at slope -0.5 per unit line height up to 2.0 | `line-height` slide 0.28% -> 0.00%; the pill probe's text lined up | **verified** to 2.0 |
 | 17 | `<img>` with a background colour gets a shape behind it (`contain` letterboxes) | `pictures` | **verified** |
@@ -160,6 +162,7 @@ opacity request removed, 4-line calibration deck, warnings for dropped CSS, `rep
 font-size 0.28 (0), line-height 0.00 (0), weights 0.40 (0), letter-spacing 0.03 (0), alignment 0.00 (0), wrapping 0.51 (3), corner-radius 0.52 (1), borders 0.52 (0),
 shadows 0.00, alpha 0.00, rotation 0.00, **pictures 0.00**, **picture-effects 0.00**, gif 31.4 (placeholders not swapped in this run, expected), grid 0.00 (1: 61 px, not investigated),
 colour 0.00, text-styles 1.83 (4), layering 1.41 (group opacity), **unsupported 0.91** (blur and blend), **native-effects 0.00**, composite 0.17. 11 of 21 under 0.15%.
+Then the raster islands were added and `layering` and `unsupported` re-measured alone: both 0.00% (the other 19 slides were not re-run on that build).
 Compare the first round: pictures 0.23, picture-effects 7.09 (opacity), layering 3.06, unsupported 19.50.
 
 ## Test decks
