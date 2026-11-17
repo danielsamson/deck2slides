@@ -26,6 +26,21 @@ about 0.85 MB. Hand-typed base64 is not dependable.
 minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
 several times; check every download is a valid PNG).
 
+## Ways of working (pick one per deck)
+
+What each route gives you, and what was tested. "Tested" means run end to end in the last session; everything else is stated as untested.
+
+| | Route | Result in Google Slides | Good for | Status |
+|---|---|---|---|---|
+| A | **Build in Claude, export with this tool** (`d2s.py convert`, upload the PPTX to Drive with conversion, swap pictures in with `replaceImage`) | Native, editable deck: text is text, cards/pills are shapes, pictures are pictures with their rounded masks, shadows kept. All slides sit on the blank layout: no placeholders, no master, no theme fonts or colours | A deck that should look like the Claude version, with no drag and drop | **Tested** on the 20-slide feature deck and (text and shapes) the 28-slide pitch deck. Limits: README rule table, rows 5, 10a, 14 |
+| B | **Build in Claude, export to PowerPoint with Claude's own exporter, upload to Drive, finish in Slides** | A converted deck. Fidelity depends on that exporter, which was not tested here, so how close it is to the Claude version is unknown | Starting from a PowerPoint file you already have, or when you want PowerPoint as the intermediate copy | **Not tested** in this project. Uploading a PPTX to Drive with conversion is what route A also does, so that step works |
+| C | **Route A or B, then bring it into the company layouts by hand in Slides** | Same as A or B, then you apply the template yourself (copy slides into the template deck with "keep source formatting" off, or change theme and layout) | Decks that must follow a master, theme fonts or placeholders | **Manual and not tested here.** The converter does not produce placeholders, so text will not flow into a layout's title or body boxes on its own; expect to retype or re-link titles |
+| D | **Build everything in Slides by hand**, or script it through the Slides API | Full control, real layouts and masters | Decks that are mostly template and little custom design | The API route was measured and rejected for design fidelity: shadow writes are ignored (stored as `NOT_RENDERED`), `ROUND_RECTANGLE` radius is fixed at about 1/6 of the short side, `letterSpacing` is rejected, there is no picture mask and image transparency cannot be updated. It is fine for plain text, rectangles and pictures |
+
+**Choosing.** If the look comes from Claude and the deck is one-off, use A. If the deck has to live inside an existing template, either build it in D, or use A and accept the manual re-templating in C. Do not expect A to map onto layouts automatically: the pipeline knows positions and styles, not which box is a "title".
+
+**Mixing.** A and C combine well: export with A, then change only the slides that need template furniture (cover, section dividers, footers) and leave the rest. Changing a slide's layout in Slides does not move the exported shapes, so nothing is lost, but nothing is re-flowed either.
+
 ## Install and run
 
 ```
