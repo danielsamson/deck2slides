@@ -7,7 +7,7 @@ merged, and where a slide breaks its own rule. Nothing here is specific to one d
 from __future__ import annotations
 import json, re, collections
 
-TYPE_SCALE = [16, 20, 24, 28, 34, 40, 56, 84, 112, 220]
+TYPE_SCALE = [20, 24, 28, 40, 56, 88, 120, 220]
 RADIUS_SCALE = [4, 12, 20, 28, 40, 9999]
 SPACE_SCALE = [4, 8, 12, 16, 24, 32, 48, 80]
 
