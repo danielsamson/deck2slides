@@ -44,10 +44,47 @@ cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 
 `background-image` other than a single gradient, rounded `inset()` clips, animation and transitions (not attempted).
 
 **Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG; real pitch-deck pictures; the pitch deck slides not re-measured on the final build;
-gradient text, off-centre radial gradients; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B); re-templating into company layouts (route C, but see the experiment: layouts and placeholders survive import).
+gradient text, off-centre radial gradients; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B); re-templating into company layouts (route C: see 'Using a company template').
 
-**Not possible in this approach at all:** real placeholders and master/theme linkage from a plain Claude deck (nothing says which box is a title); the experiment shows a PPTX
-built on a template keeps them, but the converter does not build on a template yet.
+**Needs a template and tags:** real placeholders and master/theme linkage (nothing in a plain Claude deck says which box is a title): use `--template` with `data-layout` and `data-role` (see above).
+
+## Using a company template (route A + C in one step)
+
+```
+python3 d2s.py convert <deck> <work> --template company.pptx
+```
+
+`company.pptx` is your template exported from PowerPoint or Slides (File > Download > .pptx). The build opens it instead of a blank deck, keeps its master, theme and
+**all** layouts, drops its sample slides, and gives each slide the layout named in the HTML:
+
+```html
+<section id="intro" data-layout="Title Slide">
+  <h1 data-role="title">Deck title</h1>
+  <p data-role="subtitle">Subtitle</p>
+  <div class="card">Ordinary shapes and text stay as they are</div>
+</section>
+```
+
+- `data-layout` = the layout's name in the template; unknown or missing -> the template's Blank layout (warning for unknown names).
+- `data-role` = `title`, `subtitle`, `body` (or `caption`, mapped to body). The text goes into the layout's placeholder of that type, so **position, font and colour come from the template**, not from the HTML. No free placeholder of that type -> an ordinary text box (warning).
+- Untagged elements are drawn as usual (shapes, text, pictures); the template's background replaces the HTML's slide background.
+- The template's slide size must match the deck (16:9, 10 x 5.625 in); the build warns if it does not.
+
+**Verified** (`test-decks/template-demo`, a synthetic template made with python-pptx: custom layout name, cream master background, a bar on the layout, a title placeholder): after conversion in Google
+the layout name is kept, all 11 layouts are present, the slide's layout is the named one, the master background and layout bar render, the title is a real `TITLE` placeholder bound to the layout
+(`parentObjectId` set), and the card stays live text. **Not verified:** a real company template (theme fonts, several masters, footers and slide numbers, placeholders other than title), `subtitle`/`body` fill,
+and what happens when the deck's text is longer than the placeholder (Google does not shrink it).
+
+## Writing a Claude deck so it exports well (for the deck author)
+
+Most gaps disappear if the deck is written with the export in mind:
+1. One element per visual thing: card = `div` with `background`, `border-radius`, `border`, `box-shadow`; text inside the card element, not as a sibling on top (the text then stays inside its shape).
+2. Prefer `linear-gradient`/`radial-gradient` (centred), `clip-path: polygon/circle/ellipse/inset`, solid or `double` borders, and `opacity` on a single element or picture: all native.
+3. Avoid `filter`, `mix-blend-mode`, several background layers and `background-image: url()`; use `<img>` for pictures. Blur and overlapping group opacity become pictures (their text stops being editable).
+4. Give single-line labels room: a few pixels of free width, or `white-space: nowrap`; text that exactly fills a coloured box may wrap one word differently in Google.
+5. Keep to one font family list per deck from the calibrated set (Inter, Bricolage Grotesque, Instrument Sans, Fredoka) or run `calib-deck` for new ones.
+6. With a company template: tag titles, subtitles and body text with `data-role`, set `data-layout` on each slide, and keep decorative shapes untagged.
+7. Total picture weight: about 2.7 MB of images fits in the uploaded file; beyond that pictures fall back to the second step (no opacity or clip fit), GIFs always do.
 
 ## Ways of working (pick one per deck)
 

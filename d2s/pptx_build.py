@@ -380,7 +380,7 @@ def _slim_master(xml):
     xml = re.sub(rb'<p:cSld>.*</p:cSld>', b'<p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>', xml, flags=re.S)
     return re.sub(rb'<p:txStyles>.*</p:txStyles>', b'<p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>', xml, flags=re.S)
 
-def slim_zip(path):
+def slim_zip(path, keep_master=False):
     """Remove the template's printer settings and thumbnail (13 KB of nothing) and recompress at maximum."""
     import zipfile, re, shutil
     tmp = path + '.tmp'
@@ -388,20 +388,57 @@ def slim_zip(path):
         for it in zi.infolist():
             if 'printerSettings' in it.filename or it.filename.endswith('thumbnail.jpeg'): continue
             d = zi.read(it.filename)
-            if it.filename == 'ppt/slideMasters/slideMaster1.xml': d = _slim_master(d)
+            if it.filename == 'ppt/slideMasters/slideMaster1.xml' and not keep_master: d = _slim_master(d)
             if it.filename.endswith('.rels'): d = re.sub(rb'<Relationship [^>]*(printerSettings|thumbnail)[^>]*/>', b'', d)
             zo.writestr(it.filename, d)
     shutil.move(tmp, path)
 
-def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None):
+ROLE_TYPES = {'title': ('TITLE', 'CENTER_TITLE'), 'subtitle': ('SUBTITLE',), 'body': ('BODY', 'OBJECT'), 'caption': ('BODY',)}
+def _layout(prs, name, template):
+    if not template: return prs.slide_layouts[6]
+    for l in prs.slide_layouts:
+        if name and l.name == name: return l
+    if name: print('WARNING layout %r not found in the template; using Blank' % name, file=sys.stderr)
+    for l in prs.slide_layouts:
+        if l.name.lower() == 'blank': return l
+    return prs.slide_layouts[-1]
+
+def _fill_placeholder(slide, it, used):
+    """role (title/subtitle/body) -> the layout's placeholder of that type: text only, the template supplies position, font and colour."""
+    want = ROLE_TYPES.get(it['role'])
+    if not want or not it.get('text'): return False
+    for ph in slide.placeholders:
+        if ph.placeholder_format.idx in used: continue
+        if any(t in str(ph.placeholder_format.type) for t in want):
+            tf = ph.text_frame; lines = []; cur = ''
+            for r in it['text']['runs']:
+                if r.get('br'): lines.append(cur); cur = ''; continue
+                parts = r['t'].split('\x0b'); cur += parts[0]
+                for part in parts[1:]: lines.append(cur); cur = part
+            lines.append(cur); tf.text = lines[0]
+            for ln in lines[1:]: tf.add_paragraph().text = ln
+            used.add(ph.placeholder_format.idx); return True
+    print('WARNING no free %s placeholder on layout %r: drawn as an ordinary text box' % (it['role'], slide.slide_layout.name), file=sys.stderr)
+    return False
+
+def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
     global FDB; FDB = fdb; ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
     data = json.load(open(src + '/slides.json')); embeds, escale = plan_embeds(data, picture_mode)
-    prs = Presentation(); prs.slide_width = Emu(C.SLIDE_EMU[0]); prs.slide_height = Emu(C.SLIDE_EMU[1])
+    if template:
+        prs = Presentation(template)
+        for sid in list(prs.slides._sldIdLst): prs.part.drop_rel(sid.rId); prs.slides._sldIdLst.remove(sid)     # keep masters and layouts, drop the template's own slides
+        if abs(prs.slide_width - C.SLIDE_EMU[0]) > 2000 or abs(prs.slide_height - C.SLIDE_EMU[1]) > 2000:
+            print('WARNING template slide size %dx%d EMU differs from the deck (%dx%d): positions will be scaled wrongly' % (prs.slide_width, prs.slide_height, C.SLIDE_EMU[0], C.SLIDE_EMU[1]), file=sys.stderr)
+    else:
+        prs = Presentation(); prs.slide_width = Emu(C.SLIDE_EMU[0]); prs.slide_height = Emu(C.SLIDE_EMU[1])
     from pptx.dml.color import RGBColor
     for d in data:
         if only and d['id'] not in only: continue
-        slide = prs.slides.add_slide(prs.slide_layouts[6]); npic = 0
-        for ph in list(slide.placeholders): ph._element.getparent().remove(ph._element)
+        layout = _layout(prs, d.get('layout'), template)
+        slide = prs.slides.add_slide(layout); npic = 0
+        if not template:
+            for ph in list(slide.placeholders): ph._element.getparent().remove(ph._element)
+        used_ph = set()
         def picture(it, name, force_fit=None, idx=None):
             nonlocal npic
             path = it['src']
@@ -413,7 +450,9 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None):
         for idx, it in enumerate(d['items']):
             ty = it['type']
             if ty == 'shape':
-                if it.get('bg'):
+                if it.get('bg') and template: pass                      # the template's background stays
+                elif template and it.get('role') and _fill_placeholder(slide, it, used_ph): pass
+                elif it.get('bg'):
                     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = RGBColor(round(it['fill']['r']), round(it['fill']['g']), round(it['fill']['b']))
                 else: add_shape(slide, it)
             elif ty in ('img', 'clip'): picture(it, 'Picture', None, idx)
@@ -422,6 +461,7 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None):
             elif ty == 'link':
                 sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(it['cx'] - it['w'] / 2), emu(it['cy'] - it['h'] / 2), emu(it['w']), emu(it['h']))
                 spPr = strip(sp); E('a:noFill', spPr); ln = E('a:ln', spPr); E('a:noFill', ln); sp.click_action.hyperlink.address = it['href']; sp.name = 'Link'
-    slim(prs); prs.save(out); slim_zip(out)
+    if not template: slim(prs)          # a company template keeps all its layouts and its master untouched
+    prs.save(out); slim_zip(out, keep_master=bool(template))
     print('pictures embedded in the PPTX: %d (scale %.2f); left as placeholders for replaceImage: %d' % (len(embeds), escale, len(ELEMENTS)))
     json.dump(dict(mode=picture_mode, assets=ASSETS, elements=ELEMENTS, clips=CLIPS), open(src + '/manifest.json', 'w'), indent=1)

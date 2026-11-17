@@ -182,7 +182,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
           if ((bg && bg.a > 0) || grad || uniform || hasText) {
             const it = { type: 'shape', ...g, op, radius, ell, fill: bg && bg.a > 0 && !grad ? bg : null, grad, cpath, ovclip, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null, cmpd: bst.l === 'double' ? 'dbl' : null } : null, shadow: sh, pad, bw };
-            if (hasText) it.text = textOf(el, cs, g);
+            if (hasText) { it.text = textOf(el, cs, g); if (el.dataset.role) it.role = el.dataset.role; }
             items.push(it);
           }
         }
@@ -193,7 +193,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         }
       }
       const links = [...sec.querySelectorAll('a[href]')].filter(a => !a.textContent.trim()).map(e => ({ type: 'link', href: e.href, ...geom(e.offsetWidth ? e : e.parentElement, R) }));
-      return { i: si, id: sec.id, warns, items: items.concat(links) };
+      return { i: si, id: sec.id, layout: sec.dataset.layout || null, warns, items: items.concat(links) };
     });
   });
   const hideSt = await p.addStyleTag({ content: 'img,svg{visibility:hidden !important}' });
