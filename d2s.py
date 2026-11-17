@@ -11,7 +11,7 @@
 """
 import argparse, json, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from d2s import config as C, fonts as F, pptx_build, bundles, gslides, imgdiff, calibrate, pptx2claude
+from d2s import config as C, fonts as F, pptx_build, bundles, gslides, imgdiff, calibrate, pptx2claude, tokens
 
 def extract(deck, work, assets=None, gifs=None):
     os.makedirs(work, exist_ok=True)
@@ -60,6 +60,23 @@ def requests(a):
     else: reqs, missing = gslides.replace_shape_requests(urls.keys(), urls), []
     print('missing elements:', missing, file=sys.stderr); print(gslides.dump(reqs))
 
+def tokens_cmd(a):
+    import json, os
+    if a.src.endswith('.pptx'):
+        model = tokens.from_pptx(a.src)
+    else:
+        model = tokens.from_gslides(json.load(open(a.src)), json.load(open(a.masters)) if a.masters else None)
+    d = tokens.derive(model)
+    os.makedirs(a.out, exist_ok=True)
+    name = a.name or os.path.basename(a.src)
+    json.dump(d, open(os.path.join(a.out, 'measured.json'), 'w'), indent=1, default=float)
+    json.dump(tokens.to_tokens_json(d, name), open(os.path.join(a.out, 'tokens.json'), 'w'), indent=1, default=float)
+    json.dump(tokens.to_dtcg(d, name), open(os.path.join(a.out, 'tokens.dtcg.json'), 'w'), indent=1, default=float)
+    open(os.path.join(a.out, 'tokens.css'), 'w').write(tokens.to_css(d))
+    open(os.path.join(a.out, 'DESIGN.md'), 'w').write(tokens.to_markdown(d, name))
+    print(tokens.to_markdown(d, name))
+
+
 def pptx2claude_cmd(a):
     cal = json.load(open(a.calibration)) if a.calibration else None
     warns, n = pptx2claude.convert(a.pptx, a.out, cal)
@@ -82,5 +99,6 @@ c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
+c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--name'); c.set_defaults(f=tokens_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)

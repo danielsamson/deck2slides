@@ -294,3 +294,22 @@ base64 through a chat tool is not dependable beyond a few KB.
 - Weight names for other families may not exist in Google's font list; check the `weights` slide.
 - Dashed lines use Google's longer dash; inline SVG becomes pictures; GIFs over the cap must go in by a shared-folder link.
 - Slides outside the 1920x1080 frame are not supported.
+
+## Deriving a design system from an existing deck (`d2s.py tokens`)
+
+```
+python d2s.py tokens deck.pptx out/                      # PPTX
+python d2s.py tokens slides.json out/ --masters m.json   # Google Slides presentations.get JSON
+```
+
+Writes `measured.json` (evidence), `tokens.json`, `tokens.dtcg.json` (W3C Design Tokens format), `tokens.css` (`:root` variables for a Claude Slides `deck.css`) and `DESIGN.md`.
+
+Derived: colour roles (ink, mute, paper, surface, accents; translucent fills ignored), type families and size ladder, grid (columns, gutter, margins), spacing unit, radii, strokes, layouts and placeholders.
+
+| Check | Result |
+| --- | --- |
+| Five-page deck (known truth) | palette, 12 col / 16 gutter / 124 col / 128 margins, 144/96/56 type exact. The grid comes from its drawn guide stripes. |
+| Same deck, stripes removed | 12 columns and 128 margin right; gutter wrong (measured 4, truth 16). Treat blind gutters as an estimate. |
+| public deck A template (Slides API JSON) | palette, Google Sans/Roboto ladder, 65 px margins read from layout placeholders. Its content does not sit on a column grid (7% hit), and the report says so. |
+
+Not derived yet: shadows from the Slides API (it returns a stub on every shape), custGeom radii, weights from Slides (`weightedFontFamily` not mapped), mapping slides back to layouts. Google Slides input needs the connector JSON saved to disk.

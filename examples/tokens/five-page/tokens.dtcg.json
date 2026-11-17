@@ -1,0 +1,113 @@
+{
+ "$description": "Derived by deck2slides from five-page. Measured, not authored.",
+ "color": {
+  "ink": {
+   "$type": "color",
+   "$value": "#14142E"
+  },
+  "mute": {
+   "$type": "color",
+   "$value": "#5B5F73"
+  },
+  "paper": {
+   "$type": "color",
+   "$value": "#F5F2EA"
+  },
+  "surface": {
+   "$type": "color",
+   "$value": "#FFFFFF"
+  },
+  "accent-1": {
+   "$type": "color",
+   "$value": "#6B5BFF"
+  },
+  "accent-2": {
+   "$type": "color",
+   "$value": "#FF4A1C"
+  },
+  "accent-3": {
+   "$type": "color",
+   "$value": "#B4F000"
+  }
+ },
+ "font": {
+  "family": {
+   "display": {
+    "$type": "fontFamily",
+    "$value": "Bricolage Grotesque"
+   },
+   "body": {
+    "$type": "fontFamily",
+    "$value": "Inter"
+   }
+  },
+  "size": {
+   "body": {
+    "$type": "dimension",
+    "$value": "24px"
+   },
+   "h3": {
+    "$type": "dimension",
+    "$value": "28px"
+   },
+   "h2": {
+    "$type": "dimension",
+    "$value": "32px"
+   },
+   "h1": {
+    "$type": "dimension",
+    "$value": "40px"
+   },
+   "display": {
+    "$type": "dimension",
+    "$value": "56px"
+   },
+   "display-xl": {
+    "$type": "dimension",
+    "$value": "96px"
+   }
+  }
+ },
+ "grid": {
+  "margin_left": {
+   "$type": "dimension",
+   "$value": "128px"
+  },
+  "margin_right": {
+   "$type": "dimension",
+   "$value": "128px"
+  },
+  "margin_top": {
+   "$type": "dimension",
+   "$value": "130px"
+  },
+  "columns": {
+   "$type": "number",
+   "$value": 12
+  },
+  "gutter": {
+   "$type": "dimension",
+   "$value": "16px"
+  },
+  "column_width": {
+   "$type": "dimension",
+   "$value": "124px"
+  }
+ },
+ "space": {
+  "unit": {
+   "$type": "dimension",
+   "$value": "4px"
+  }
+ },
+ "radius": {
+  "r0": {
+   "$type": "dimension",
+   "$value": "22px"
+  },
+  "r1": {
+   "$type": "dimension",
+   "$value": "32px"
+  }
+ }
+}

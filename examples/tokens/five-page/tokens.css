@@ -1,0 +1,23 @@
+:root {
+  --c-ink: #14142E;
+  --c-mute: #5B5F73;
+  --c-paper: #F5F2EA;
+  --c-surface: #FFFFFF;
+  --c-accent-1: #6B5BFF;
+  --c-accent-2: #FF4A1C;
+  --c-accent-3: #B4F000;
+  --font-display: "Bricolage Grotesque";
+  --font-body: "Inter";
+  --t-body: 24px;
+  --t-h3: 28px;
+  --t-h2: 32px;
+  --t-h1: 40px;
+  --t-display: 56px;
+  --t-display-xl: 96px;
+  --margin: 128px;
+  --cols: 12;
+  --gutter: 16px;
+  --col: 124px;
+  --space: 4px;
+  --radius: 22px;
+}
