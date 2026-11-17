@@ -384,45 +384,56 @@ def structural_files(res, tk):
     return out
 
 
-def layout_files(res, slides_json, masters_json, tk):
-    """One preview + README per layout in the verified catalogue, and a Layouts.md summary that states each status."""
-    import re as _re
+def layout_files(res, slides_json, masters_json, tk, comps=None):
+    """Layouts are templates that arrange components, not components. Each gets a showcase-page preview (the type's `page` flag,
+    so it is not listed as a bundle component) and a section in Layouts.md with status, slots and the components it uses."""
+    import re as _re, tempfile
     from . import gslides2claude as G
     hexmap = {}
     for t in tk['color']['tokens']:
         v = t['value'][tk['color']['themes'][0]['id']] if isinstance(t['value'], dict) else t['value']
         hexmap.setdefault(v.lower(), t['name'])
     tok = lambda s: _re.sub(r'(color|background):([^;"]*?)(#[0-9a-fA-F]{6})', lambda m: '%s:%svar(--%s,%s)' % (m.group(1), m.group(2), hexmap[m.group(3).lower()], m.group(3)) if m.group(3).lower() in hexmap else m.group(0), s)
-    import tempfile
     work = tempfile.mkdtemp()
-    ex = {max(e['variants'], key=lambda v: v['n'])['exemplar'] - 1 for e in res if e['variants']}
+    ex = {v['exemplar'] - 1 for e in res for v in e['variants']}
     G.convert(slides_json, masters_json, work, only=ex)
-    out, lines = {}, ['# Layouts', '', 'Slide layouts proposed from the deck and checked against its slides. **Verified** means at least 75% of the slides a layout claims sit in families of three or more that match its recipe; **partly verified** and **unverified** say how little held up. Previews use the exemplar slide; pictures are placeholders.', '',
-                      '| Layout | Status | Slides claimed | In verified families |', '| --- | --- | --- | --- |']
+    out = {}
+    L = ['# Layouts', '',
+         'A layout is a whole-slide template: where things go and which components fill it. It is not a component. Each was proposed by Claude from the deck\'s exemplar slides and checked against the slides it claims. '
+         '**Verified** means at least 75% of the claimed slides sit in families of three or more that match its recipe; **partly verified** and **unverified** say how little held up. Previews are showcase pages built from an exemplar slide, with placeholder pictures.', '',
+         '| Layout | Status | Slides claimed | In verified families | Components used |', '| --- | --- | --- | --- | --- |']
+    detail = []
     for e in res:
-        nm = 'Layout' + ''.join(w[:1].upper() + w[1:] for w in e['name'].split())
-        lines.append('| %s | %s | %d | %d%% |' % (e['name'], e['status'], e['claimed'], round(e['coverage'] * 100)))
+        used = []
+        for v in e['variants']:
+            for c in (comps or []):
+                if v['exemplar'] in c.get('all_slides', []) and c['name'] not in used:
+                    used.append(c['name'])
+        lname = ''.join(w[:1].upper() + w[1:] for w in e['name'].split())
+        L.append('| %s | %s | %d | %d%% | %s |' % (e['name'], e['status'], e['claimed'], round(e['coverage'] * 100), ', '.join(used) or 'none'))
         if not e['variants']:
+            detail.append('## %s\n\n%s\n\n**Status: %s.** %s. No agreeing family of slides was found, so there is no preview.\n\nClaimed slides: %s.\n' % (e['name'], e['usage'], e['status'], e['provenance'], ', '.join(map(str, e['outliers']))))
             continue
         best = max(e['variants'], key=lambda v: v['n'])
         sec = open('%s/project/slides/s%03d.html' % (work, best['exemplar'])).read()
         sec = _re.sub(r'<img src="IMG:\d+"', '<img data-missing', sec)
-        out['components/%s/preview.html' % nm] = '<!-- @dsCard group="Layouts" height=1080 width=1920 subtitle="%s" -->\n<style>body{margin:0}section{position:relative;width:1920px;height:1080px;overflow:hidden}</style>\n%s\n' % (e['status'], tok(sec))
-        rec = best['recipe']
-        L = ['%s: %s' % (e['name'], e['usage']), '', '**Status: %s.** %s.' % (e['status'], e['provenance']), '']
-        L.append('Variants checked: ' + '; '.join('%s (exemplar slide %d, %d slides, mean slot match %.2f, %s)' % (v['label'], v['exemplar'], v['n'], v['mean'], v['status']) for v in e['variants']) + '.')
+        out['components/Layout%s/preview.html' % lname] = '<!-- @dsCard group="Layouts" page height=1080 width=1920 subtitle="%s" -->\n<style>body{margin:0}section{position:relative;width:1920px;height:1080px;overflow:hidden}</style>\n%s\n' % (e['status'], tok(sec))
+        d = ['## %s' % e['name'], '', e['usage'], '', '**Status: %s.** %s.' % (e['status'], e['provenance']), '']
+        if used:
+            d.append('Components used: %s.' % ', '.join(used))
+        d.append('Variants checked: ' + '; '.join('%s (exemplar slide %d, %d slides, mean slot match %.2f, %s)' % (v['label'], v['exemplar'], v['n'], v['mean'], v['status']) for v in e['variants']) + '.')
         if e['outliers']:
-            L.append('\nClaimed but not matching any family: slides %s.' % ', '.join(map(str, e['outliers'])))
+            d.append('\nClaimed but not matching any family: slides %s.' % ', '.join(map(str, e['outliers'])))
         if e['weak_discriminator']:
-            L.append('\nCaution: the recipe also matches many slides outside this layout, so it describes a pattern (little on the slide, one idea) more than a layout.')
-        L += ['', 'Slots of the exemplar:', '']
-        for s in rec:
+            d.append('\nCaution: the recipe also matches many slides outside this layout, so it describes a sparse pattern more than a distinct layout.')
+        d += ['', 'Slots of the exemplar:', '']
+        for s in best['recipe']:
             if s['klass'] == 'text':
-                L.append('- **%s** at x %d, y %d, width %d (%gpx, weight %s, %s): e.g. "%s"' % (s['role'], s['x'], s['y'], s['w'], s['px'], s['weight'], s['colour'], s['text'][:50]))
+                d.append('- **%s** at x %d, y %d, width %d (%gpx, weight %s, %s): e.g. "%s"' % (s['role'], s['x'], s['y'], s['w'], s['px'], s['weight'], s['colour'], s['text'][:50]))
             else:
-                L.append('- %s at x %d, y %d, %dx%d' % (s['role'], s['x'], s['y'], s['w'], s['h']))
-        out['components/%s/README.md' % nm] = '\n'.join(L) + '\n'
-    out['Layouts.md'] = '\n'.join(lines) + '\n'
+                d.append('- %s at x %d, y %d, %dx%d' % (s['role'], s['x'], s['y'], s['w'], s['h']))
+        detail.append('\n'.join(d) + '\n')
+    out['Layouts.md'] = '\n'.join(L) + '\n\n' + '\n'.join(detail)
     return out
 
 

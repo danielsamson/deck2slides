@@ -392,7 +392,7 @@ def extract(slides_json, masters_json, outdir=None, canvas=(1920, 1080)):
         nm = name_group(g, taken)
         sl = slots(g)
         w, h, body = preview_html(g[0], conv)
-        comps.append(dict(name=nm, bg=slide_bg[g[0]['slide']] or '#ffffff', instances=len(g), slides=sorted({c['slide'] + 1 for c in g})[:12], n_slides=len({c['slide'] for c in g}),
+        comps.append(dict(name=nm, all_slides=sorted({x['slide'] + 1 for x in g}), bg=slide_bg[g[0]['slide']] or '#ffffff', instances=len(g), slides=sorted({c['slide'] + 1 for c in g})[:12], n_slides=len({c['slide'] for c in g}),
                           members=len(g[0]['members']), size=[round(w), round(h)], slots=sl, preview_body=body,
                           roles=[list(map(str, r)) if isinstance(r, tuple) else r for r in g[0]['roles']]))
     # layouts: slides grouped by what they contain
