@@ -315,3 +315,7 @@ Derived: colour roles (ink, mute, paper, surface, accents; translucent fills ign
 | public deck A template (Slides API JSON) | palette, Google Sans/Roboto ladder, 65 px margins read from layout placeholders. Its content does not sit on a column grid (7% hit), and the report says so. |
 
 Not derived yet: shadows from the Slides API (it returns a stub on every shape), custGeom radii, weights from Slides (`weightedFontFamily` not mapped), mapping slides back to layouts. Google Slides input needs the connector JSON saved to disk.
+
+## Applying a derived system (`test-decks/applied/`)
+
+`generate.py` builds a fictional three-slide deck (Trend Pulse) in the Claude Slides format from the public deck A system's `tokens.json`: every colour, radius, shadow, margin, gutter and column count reaches the slides as a CSS variable, and the script only chooses layout. `examples/applied/applied.png` shows it; `trend-pulse.pptx` is the same deck through the normal export (`d2s.py convert`). Observations: the system's body size (22.5 px) is under the format's 24 px text floor, so body copy uses `h3` (29.5 px); the derived 6-column grid is a low-confidence fit, so columns are recomputed to fill the margins using the system's gutter. Not checked: the PPTX in Google Slides (Google Sans and Roboto are not in the calibration set, so text offsets use the extrapolated values), and the deck in the live Claude Slides viewer.
