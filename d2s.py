@@ -22,13 +22,15 @@ def extract(deck, work, assets=None, gifs=None):
 
 def font_db(deck, work, calibration=None):
     table = F.font_table(os.path.join(deck, 'deck.json'), work + '/fonts.json', work + '/fontcache')
-    json.dump(table, open(work + '/font_table.json', 'w'), indent=1)
+    json.dump(table, open(work + '/font_table.json', 'w'), indent=1, default=float)
     cal = json.load(open(calibration)) if calibration and os.path.exists(calibration) else None
     return F.FontDB(table, cal), table, bool(cal)
 
 def convert(a):
     extract(a.deck, a.work, a.assets, a.gifs); fdb, table, cal = font_db(a.deck, a.work, a.calibration)
     print('fonts:', {k: (v['natural'], v['source']) for k, v in table.items()}, '| calibration:', 'yes' if cal else 'NONE (first-line offsets uncorrected; run calib-deck/calib-fit)')
+    for sl in json.load(open(a.work + '/slides.json')):
+        for w in sl.get('warns', []): print('WARNING slide %s: %s' % (sl['id'], w), file=sys.stderr)
     pptx_build.build(a.work, a.work + '/deck.pptx', fdb, a.picture_mode)
     packs, too_big = bundles.pack(a.work)
     print('deck.pptx %d KB; %d bundles %s; too big for the connector (use a shared Drive folder): %s' % (os.path.getsize(a.work + '/deck.pptx') // 1024, len(packs), [p['kb'] for p in packs], too_big or 'none'))
@@ -37,7 +39,7 @@ def calib_deck(a):
     tmp = a.work + '/calib'; extract(a.deck, a.work + '/probe', a.assets, None)         # only to learn which fonts the deck uses
     fonts_used = json.load(open(a.work + '/probe/fonts.json')); cells = calibrate.make_deck(os.path.join(a.deck, 'deck.json'), fonts_used, tmp + '/deck')
     extract(tmp + '/deck', tmp + '/out'); table = F.font_table(tmp + '/deck/deck.json', tmp + '/out/fonts.json', a.work + '/fontcache')
-    json.dump(table, open(tmp + '/font_table.json', 'w'), indent=1)
+    json.dump(table, open(tmp + '/font_table.json', 'w'), indent=1, default=float)
     pptx_build.build(tmp + '/out', tmp + '/calib.pptx', F.FontDB(table, None))
     print('calibration deck:', tmp + '/calib.pptx', len(cells), 'cells,', len({c['fam'] for c in cells}), 'fonts')
 
@@ -65,7 +67,7 @@ def report(a):
     print('%-3s %-16s %7s %7s %6s %8s %8s %4s' % ('#', 'slide', 'diff%', 'regions', 'blocks', 'max_off', 'mean_off', '>4px'))
     for r in rows: print('%-3d %-16s %7.2f %7d %6d %8d %8.2f %4d' % (r['slide'], r['id'], r['pct'], r['regions'], r['blocks'], r['max_off'], r['mean_off'], r['bad']))
     clean = sum(1 for r in rows if r['pct'] < C.CLEAN_SLIDE_PCT); print('%d slides, %d clean (<%.2f%% pixels differ), %d text blocks off by more than 4 px' % (len(rows), clean, C.CLEAN_SLIDE_PCT, sum(r['bad'] for r in rows)))
-    json.dump(rows, open(a.work + '/report_%s.json' % os.path.basename(a.thumbs.rstrip('/')), 'w'), indent=1)
+    json.dump(rows, open(a.work + '/report_%s.json' % os.path.basename(a.thumbs.rstrip('/')), 'w'), indent=1, default=float)
 
 p = argparse.ArgumentParser(); sub = p.add_subparsers(dest='cmd', required=True)
 c = sub.add_parser('convert'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.add_argument('--gifs'); c.add_argument('--calibration'); c.add_argument('--picture-mode', default=C.PICTURE_MODE, choices=['mask', 'shape']); c.set_defaults(f=convert)

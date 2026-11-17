@@ -25,7 +25,7 @@ def test_weight_face_names():
 def test_image_requests():
     els = [dict(tag='a.0.k', key='k', method='CENTER_CROP', transparency=0.5), dict(tag='b.0.k', key='k', method='CENTER_INSIDE', transparency=0)]
     reqs, missing = gslides.replace_image_requests(els, {'a.0.k': 'o1'}, {'k': 'http://u'})
-    assert missing == ['b.0.k'] and reqs[0]['replaceImage']['imageObjectId'] == 'o1' and reqs[1]['updateImageProperties']['imageProperties']['transparency'] == 0.5
+    assert missing == ['b.0.k'] and reqs[0]['replaceImage']['imageObjectId'] == 'o1' and len(reqs) == 1   # opacity is not sent: the API refuses to update image transparency
 
 def test_gif_delays_sum_exactly():
     assert sum(clips.delays(15, 15)) == 100 and sum(clips.delays(12, 12)) == 100

@@ -9,7 +9,7 @@ import numpy as np
 from .imgdiff import load, ink_bbox
 
 LHS = [0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
-FS = 60; CELL_W = 250; COL0 = 40; ROW_H = 300; ROW0 = 70
+FS = 60; CELL_W = 250; COL0 = 40; ROW_H = 400; ROW0 = 70; NLINES = 4
 
 def make_deck(deck_json, fonts_used, outdir, weights=(400,)):
     """fonts_used: {family: {'weights': [...]}} (fonts.json). Writes outdir/{deck.json,deck.css,slides/*.html}."""
@@ -20,7 +20,7 @@ def make_deck(deck_json, fonts_used, outdir, weights=(400,)):
         for ri, w in enumerate(weights):
             for ci, lh in enumerate(LHS):
                 x, y = COL0 + ci * CELL_W, ROW0 + ri * ROW_H
-                html.append('<div style="position:absolute;left:%dpx;top:%dpx;width:%dpx;font-family:\'%s\';font-weight:%d;font-size:%dpx;line-height:%s;color:#000">E<br>H</div>' % (x, y, CELL_W - 20, fam, w, FS, lh))
+                html.append('<div style="position:absolute;left:%dpx;top:%dpx;width:%dpx;font-family:\'%s\';font-weight:%d;font-size:%dpx;line-height:%s;color:#000">%s</div>' % (x, y, CELL_W - 20, fam, w, FS, lh, '<br>'.join('EH'[i % 2] for i in range(NLINES))))
                 cells.append(dict(slide=si + 1, fam=fam, w=w, lh=lh, box=[x - 12, y + 2, x + CELL_W - 12, y + ROW_H - 40]))
         html.append('</section>'); open('%s/slides/%s.html' % (outdir, sid), 'w').write('\n'.join(html))
     json.dump(dict(v=5, title='calibration', order=order, faces={k: v for k, v in src['faces'].items() if v['family'] in fams}), open(outdir + '/deck.json', 'w'))
@@ -42,8 +42,8 @@ def fit(calib_dir, workdir, thumbdir, table):
         n = c['slide']
         if n not in imgs: imgs[n] = (load('%s/full_%02d.png' % (workdir, n)), load('%s/p%d.png' % (thumbdir, n)))
         A, G = imgs[n]; ra, rg = _line_tops(A, c['box']), _line_tops(G, c['box'])
-        if len(ra) < 2 or len(rg) < 2: print('cell not measurable', c); continue
-        a0, g0 = ra[0][0], rg[0][0]; pa, pg = ra[1][0] - ra[0][0], rg[1][0] - rg[0][0]
+        if len(ra) < NLINES or len(rg) < NLINES: print('cell not measurable', c); continue
+        a0, g0 = ra[0][0], rg[0][0]; pa, pg = (ra[NLINES - 1][0] - a0) / (NLINES - 1), (rg[NLINES - 1][0] - g0) / (NLINES - 1)
         e = acc.setdefault(c['fam'], {}); e.setdefault(c['lh'], []).append(dict(dy=(g0 - a0) / FS, pitch_ratio=pg / pa, w=c['w']))
     out = {}; report = {}
     for fam, byl in acc.items():

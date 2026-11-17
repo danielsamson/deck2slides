@@ -33,6 +33,7 @@ DY_FALLBACK_PER_FS = 0.0       # px of shift per px of font size (no correction)
 WIDEN_MIN_PX = 12
 WIDEN_FRACTION = 0.04
 WIDEN_MULTILINE_PX = 2         # free multi-line text: small cushion
+WRAP_NONE_TIGHT = False        # wrap="none" for nowrap text, text that overflows its box and tight single-line / forced-break text (EXPERIMENT, see README rule 5)
 # A wrapped block is forced to soft breaks when a word missed by < RISKY_FRACTION of the box width (extract.cjs).
 
 # --- Rounded shapes ------------------------------------------------------------------------------------------
@@ -43,6 +44,8 @@ MAX_RADIUS_FRACTION = 0.5      # roundRect adj is radius / min(w, h), capped at 
 # --- Pictures ------------------------------------------------------------------------------------------------
 PICTURE_MODE = 'mask'          # 'mask': rounded picture element + replaceImage; 'shape': tagged text placeholder + replaceAllShapesWithImage
 PLACEHOLDER_PNG_BYTES = 70     # a 1x1 PNG; the real picture replaces it in Slides
+PICTURE_SHADOW = 'native'      # 'native': outerShdw on the picture itself; 'shape': a separate rounded shape behind it (old way)
+PICTURE_ALPHA = False          # alphaModFix on the placeholder picture (the API cannot set image transparency: 'transparency cannot be updated')
 SHADOW_INSET_PX = 1            # a picture's shadow shape is this much smaller on each side so its corners never show
 MAX_PIC_WIDTH_FACTOR = 2.0     # pictures are bundled at most this many times their on-slide width (connector size limit)
 BUNDLE_LIMIT_KB = 850          # Drive connector `create_file` limit is ~0.85 MB per file (measured: 1.1 MB fails)

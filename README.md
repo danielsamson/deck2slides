@@ -9,17 +9,22 @@ How: lay every slide out in headless Chromium at 1920x1080 (`js/extract.cjs`) ->
 
 ## Status (read this first)
 
-Built and checked **offline** in the session that wrote it: extraction, build, font metrics, bundling, GIF prep, request builders,
-unit tests (`python3 -m pytest tests`), and an offline regression (below). **Not yet verified against Google** in this session:
-the Drive connector refused file-reference uploads (`File references can't be used here`) and inline base64 of a 17 KB file got
-corrupted in transit, so none of the Google round trips (calibration, feature decks, thumbnails, `replaceImage` mask behaviour)
-have been run. Every rule in the table below marked *carried over* comes from the earlier hand-measured conversion of the pitch deck;
-*unverified* means the test deck exists but has not been through Google yet.
+Verified against Google in the last session (Inter and Bricolage Grotesque for the feature deck; Bricolage, Instrument Sans, Inter and
+Fredoka for the pitch deck regression). Numbers are in "Test results" below. **Not verified:** other fonts, animated GIF playback,
+GIFs over 0.85 MB (link route), inline SVG pictures, the pitch deck with its real pictures (only text and shapes were compared),
+slides 1-5, 8-9, 12-14, 17-23, 25-26, 28 of the pitch deck after the final code change (they were compared on an earlier build only).
 
-Offline regression: the pitch deck (28 slides) rebuilt with this package plus `examples/pitch-legacy-calibration.json` (the old
-hand table in the new calibration format) gives 819 shapes, 803 identical to the old build in position, size, text and line spacing;
-the other 16 differ only in the picture tag name. Max geometry difference 0.08 px. The pixel-diff regression against Google
-(20 of 28 slides clean) still has to be run with the checklist below.
+Offline regression: the pitch deck (28 slides) rebuilt with this package plus `examples/pitch-legacy-calibration.json` gives 819 shapes,
+803 identical to the old build in position, size, text and line spacing.
+
+**Known constraint:** file-reference uploads (Drive `create_file` with `base64Content = sha256:<hash>:<absolute path>`) work in some
+sessions and not others; when they do not, a session that has them must do the upload. When they work, the file must sit **inside the
+session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and be under
+about 0.85 MB. Hand-typed base64 is not dependable.
+
+**Other measured constraints:** the Slides MCP rate-limits thumbnail reads ("Expensive read requests per minute", about 27 in a
+minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
+several times; check every download is a valid PNG).
 
 ## Install and run
 
@@ -51,8 +56,8 @@ python3 d2s.py convert ... --calibration calibration.json
 1. `d2s.py convert` as above. Note `deck.pptx` and `pack/`.
 2. Drive `create_file`, `contentMimeType: application/vnd.openxmlformats-officedocument.presentationml.presentation`
    (converts to Google Slides), `parentId` = the test/output folder. Preferred: `base64Content` as a file reference
-   `sha256:<hash>:<absolute path>`. **That was refused in the last session**; if it is refused, the file has to be uploaded by hand
-   or inline (only dependable for files of a few KB).
+   `sha256:<hash>:<absolute path>` (worked in the last session for files under the working directory). If it is refused, a session
+   that has file references must upload it (see Known constraint above).
 3. `read_presentation` with `fields` = `gslides.READ_ELEMENTS_MASK` -> save the JSON; `gslides.ids_by_tag` gives picture object ids.
 4. For each `pack_NN.pptx`: upload it, `read_presentation` with `READ_IMAGES_MASK`, `gslides.bundle_urls` -> urls (valid ~30 min), then
    `d2s.py requests <work> tags.json urls.json` and send the list in one `update_presentation` with
@@ -64,27 +69,56 @@ python3 d2s.py convert ... --calibration calibration.json
 
 ## Rule table
 
-| # | Rule | How it was measured | Where | Status |
-|---|---|---|---|---|
-| 1 | 1920 px = 10 in; 1 px = 4762.5 EMU; pt = px x 0.375 | arithmetic | `config.py` | exact |
-| 2 | Line spacing %: CSS line-height / the font's **own** line height (hhea ascent+descent+gap / upm) | pitch of 2-line text vs Chromium; hhea read with fontTools now equals the browser's `line-height: normal` for Bricolage 1.2, Instrument Sans 1.22, Inter 1.21, Fredoka 1.21 (checked this session) | `fonts.py`, calibration `natural` | metrics verified offline; Google pitch: carried over for those 4 fonts, calibration deck measures any other |
-| 3 | First-line offset | `calib-deck` + `calib-fit`: Google minus Chromium ink top per font x line height, stored as fraction of font size | `calibrate.py` | procedure built, **not run**; legacy 4-font table available as example |
-| 4 | Weights in face name ("Inter SemiBold"), only 700 uses bold flag | hand test on Inter and Bricolage | `config.WEIGHT_SUFFIX` | carried over; `weights` slide tests 100-900 |
-| 5 | Google wraps to the box and sets text ~0.1% narrower: one-line/tight boxes widened by max(12 px, 4%); risky/tight multi-line get soft breaks at the browser's break points | hand tuned on the pitch deck | `config.WIDEN_*`, `extract.cjs` | carried over; `wrapping` slide |
-| 6 | Text in a rounded shape is inset by 0.2929 x radius | DrawingML text rectangle of roundRect; measured | `config.ROUND_TEXT_INSET` | carried over; `corner-radius` slide |
-| 7 | Glyph missing from the web font -> Arial | detected by canvas measurement, not `document.fonts.check` | `extract.cjs` | carried over |
-| 8 | Letter spacing survives; PDF export draws a gap where a word changes colour in a spaced line | observed | - | carried over |
-| 9 | Picture shadows need a separate rounded shape behind (inset 1 px) | real bug fixed earlier | `config.SHADOW_INSET_PX` | carried over; `picture-effects` slide |
-| 10 | Pictures: rounded picture element with 1x1 placeholder, filled by `replaceImage` (CENTER_CROP for cover, CENTER_INSIDE for contain); opacity via `updateImageProperties` | **design change, untested**: relies on `replaceImage` keeping the roundRect mask | `pptx_build.add_picture_mask` | `--picture-mode shape` is the old proven path (tagged placeholder + `replaceAllShapesWithImage`) |
-| 11 | GIF: < 1000 frames, settled first frame, plain rectangle (mask gives the corners), by link if over 0.85 MB | earlier session | `clips.py`, `config.GIF_*` | carried over |
-| 12 | Inline SVG is rasterised to a transparent PNG | - | `extract.cjs` | carried over |
+Status: **verified** = measured against Google in the last session (fonts: see Status); *carried over* = from the earlier hand
+measurement, not re-measured; *failed* = tried and does not work.
+
+| # | Rule | How it was measured | Status |
+|---|---|---|---|
+| 1 | 1920 px = 10 in; 1 px = 4762.5 EMU; pt = px x 0.375 | arithmetic | exact |
+| 2 | Line spacing % = CSS line-height / the font's own line height (hhea). Calibration may override it per font (`natural`) | 4-line pitch on the calibration deck, 2000 px thumbnails: Bricolage 1.000 of hhea; Inter 0.9895 of hhea, stored as natural 1.1973 | **verified** for Inter, Bricolage. Instrument Sans, Fredoka: carried over |
+| 3 | First-line offset (`calib-fit`): Google minus Chromium ink top, per font and line height | fit run on a fresh 4-line deck. Values come in 1-px steps (Google snaps text to whole pixels at 1600/2000 px thumbnails), so the table carries about 0.5 px noise | **verified** (procedure); legacy 4-font table kept in `examples/` |
+| 4 | Weights 100-900 as face names ("Inter SemiBold"); only 700 uses the bold flag | `weights` slide: nine weights, Inter and Bricolage, widths within +-0.2% of Chromium, vertical offset 0-2 px | **verified** (these two fonts) |
+| 5 | Google sets text to the same width as Chromium (ratio 1.000, worst 1.0017 over about 40 rows); boxes are widened by max(12 px, 4%) and tight multi-line text gets soft breaks | width ratios on `font-size`, `weights`, `letter-spacing` slides; `wrapping` slide | **verified** for widths. Still wrong: (a) a multi-line filled box that fits exactly wraps its last word ("here" on `wrapping`); (b) a very long word is broken by Google while Chromium overflows it |
+| 5a | Text that overflows its box in the browser (nowrap, long word) widens the box by the overflow | `wrapping` slide: "nowrap text overflowing its box" now stays on one line | **verified** |
+| 5b | **Failed:** `wrap="none"` in bodyPr, and negative insets, to widen text inside a filled shape: Google ignores both (slide 6 and 17 numbers identical with and without) | A/B on the `wrapping` and `text-styles` slides | failed; `WRAP_NONE_TIGHT=False`, negative insets removed |
+| 6 | Text inside a rounded shape is inset by 0.2929 x radius; a true ellipse (`border-radius:50%` on a non-square box) is emitted as `ellipse` with inset 0.1464 x w/h | `corner-radius` slide: radius 0-90 text matches (max 3 px); ellipse now correct (was a stadium) | **verified** to radius 90; circle r=140 text wraps one line differently (one block 39 px off) |
+| 7 | Glyph missing from the web font -> Arial | canvas measurement | carried over |
+| 8 | Letter spacing -4 to +12 px is kept (`spc`); widths equal Chromium (ratio 1.000 to 1.0013 on 9 rows) | `letter-spacing` slide | **verified** |
+| 9 | Picture shadow: `outerShdw` on the picture itself. Survives `replaceImage` (alpha 0.349, blur 158750 EMU read back). The old "separate rounded shape behind" is no longer needed (`PICTURE_SHADOW='shape'` keeps it) | `picture-effects` slide, read back through the API and compared visually | **verified** |
+| 10 | Pictures: rounded picture element with a transparent 1x1 placeholder, filled by `replaceImage` (CENTER_CROP cover, CENTER_INSIDE contain) | `pictures` + `picture-effects`: **the roundRect mask, rotation and radii 0/40/80/150/300 are kept after `replaceImage`**; full-reference diff 0.23% on `pictures` | **verified**; `--picture-mode shape` stays as the fallback |
+| 10a | **Picture opacity is not possible in mask mode:** the API says "transparency cannot be updated", and `alphaModFix` on the placeholder is dropped by `replaceImage` (import keeps it, replace removes it). The converter prints nothing for this yet | `picture-effects` slide, API read-back | failed; opacity < 1 on a picture is lost (flag `PICTURE_ALPHA` left off) |
+| 11 | GIF: < 1000 frames, settled first frame, plain rectangle (mask gives the corners), by link if over 0.85 MB | `gif` slide: rounded masks and `replaceImage` work for a small GIF; first frame only, playback not checked | partly verified |
+| 12 | Inline SVG is rasterised to a transparent PNG | - | carried over, untested |
+| 13 | Shadows, alpha, rotation, colours, borders | slides `shadows`, `alpha`, `rotation`, `colour`: 0.00% pixel difference; `borders` 0.52% (solid/dashed/dotted drawn, not inspected one by one) | **verified** |
+| 14 | **Dropped, now warned at convert time:** gradients (linear, radial), clip-path, filter blur, mix-blend-mode, double border (drawn solid), `overflow:hidden` clipping a child, group opacity (applied per child, overlaps look darker) | `unsupported` and `layering` slides: 19.5% / 3.1% pixels differ | **verified as lost**; not implemented |
+
+## Test results (last session)
+
+Method: `d2s.py report <work> <thumbs> --ref noimg --ignore-pictures` (2000 px Google thumbnails vs the 1920 px browser render).
+
+**Calibration effect** (feature deck, before = no calibration, 1600 px thumbs; after = fitted calibration, 2000 px thumbs, plus the code fixes below;
+the two changes are mixed, so the gain cannot be credited to calibration alone):
+text blocks more than 4 px off: 28 -> 11. Mean offset per slide (px): font-size 1.40 -> 0.94, line-height 3.18 -> 1.75, weights 1.89 -> 1.28,
+letter-spacing 6.11 -> 1.00, alignment 3.00 -> 0.89. Pixel difference: font-size 1.47 -> 0.28%, letter-spacing 5.56 -> 0.03%, alignment 3.43 -> 0.00%.
+
+**Feature deck, final run (pixel diff %, text blocks >4 px off):** font-size 0.28 (0), line-height 0.28 (2), weights 0.40 (0), letter-spacing 0.03 (0),
+alignment 0.00 (0), wrapping 0.51 (3), corner-radius 0.52 (1), borders 0.52 (0), shadows 0.00, alpha 0.00, rotation 0.00, pictures 0.40 (0, with pictures
+0.23 vs the full render), picture-effects 0.55 (opacity lost), gif 0.24, grid 0.00 (1 block 61 px: not investigated), colour 0.00,
+text-styles 1.83 (4: the mixed-size line wraps in Google), layering 3.06 (clip and group opacity), unsupported 19.50 (dropped features), composite 0.33 (0).
+7 of 20 slides under 0.15%.
+
+**Pitch deck regression** (text and shapes only; real pictures were not available): committed OLD pipeline: 27 of 28 slides under 0.15%, 8 blocks >4 px.
+Committed NEW pipeline file: 23 of 28 and 30 blocks, but that was caused by its opaque grey placeholder pictures covering the slides in the Google render
+(proved by looking at the render), not by text placement. After making the placeholder transparent and rebuilding with the current code, the six
+slides re-measured (country, goal, journey, echo, marker-kv, toy) give the **same numbers as OLD** (offsets 5/8/2/9/1/2 px) and `toy` is 0.00% against 1.20% for OLD.
+The other 22 slides were not re-measured on the final build.
+
+Code changes made from these tests: true `ellipse` for 50% radius, widening for text that overflows its box, picture shadow on the picture, transparent placeholder,
+opacity request removed, 4-line calibration deck, warnings for dropped CSS, `report` JSON fix.
 
 ## Test decks
 
-`test-decks/features/` (regenerate with `python3 generate.py`): 14 slides, one rule each, each sweeping values: font-size, line-height,
-weights, letter-spacing, alignment, wrapping, corner-radius (to pill and circle, text inside), borders (solid/dashed/dotted, one-sided),
-shadows, alpha, rotation, pictures (cover/contain, rounded), picture-effects (shadow, opacity, rotation), gif (rounded masks).
-They convert and render locally. They have **not** been through Google yet.
+`test-decks/features/` (regenerate with `python3 generate.py`): 20 slides, one rule each (see the rule table for what each covered).
 
 ## Why PPTX import and not the Slides API (measured)
 
@@ -97,7 +131,8 @@ base64 through a chat tool is not dependable beyond a few KB.
 
 ## Known limits
 
-- Drive connector: upload size (~0.85 MB per file via file reference); only sees files it created; no bulk trash.
+- Drive connector: upload size (~0.85 MB per file via file reference, file inside the working directory); only sees files it created; no bulk trash.
+- Still manual: GIFs over 0.85 MB (shared-folder link), picture opacity, anything in rule 14.
 - Only Inter, Bricolage Grotesque, Instrument Sans and Fredoka have ever been compared with Google. Do not assume other fonts; run calibration.
 - Weight names for other families may not exist in Google's font list; check the `weights` slide.
 - Dashed lines use Google's longer dash; inline SVG becomes pictures; GIFs over 0.85 MB must go in by a shared-folder link.

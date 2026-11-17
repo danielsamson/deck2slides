@@ -53,7 +53,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     const fam = s => s.fontFamily.split(',')[0].replace(/['"]/g, '').trim();
     let svgN = 0;
     return [...document.querySelectorAll('section')].map((sec, si) => {
-      const R = sec.getBoundingClientRect(); const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), radius: 0, bg: 1 }];
+      const R = sec.getBoundingClientRect(); const warns = []; const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), radius: 0, bg: 1 }];
       const textOwner = new Map();
       // Which element owns each run of text: the nearest non-inline ancestor.
       const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT); let n;
@@ -89,7 +89,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         const lhpx = cs.lineHeight === 'normal' ? parseFloat(cs.fontSize) * 1.2 : parseFloat(cs.lineHeight);
         if (!flat) lines = Math.max(lines, Math.round((g.h - pt - pb) / lhpx));
         const flex = cs.display.includes('flex');
-        return { runs, lines, maxChars, risky, wraps, tight: flat && cRight - maxRight < 0.006 * cW + 1, fs: parseFloat(cs.fontSize), lh: cs.lineHeight === 'normal' ? null : parseFloat(cs.lineHeight) / parseFloat(cs.fontSize), fam: fam(cs),
+        return { runs, lines, maxChars, risky, wraps, over: Math.max(0, maxRight - cRight), tight: flat && cRight - maxRight < 0.006 * cW + 1, fs: parseFloat(cs.fontSize), lh: cs.lineHeight === 'normal' ? null : parseFloat(cs.lineHeight) / parseFloat(cs.fontSize), fam: fam(cs),
           align: flex ? (cs.justifyContent === 'center' ? 'center' : 'left') : (cs.textAlign === 'center' ? 'center' : (cs.textAlign === 'right' || cs.textAlign === 'end') ? 'right' : 'left'),
           anchor: flex && cs.alignItems === 'center' ? 'middle' : 'top', nowrap: cs.whiteSpace === 'nowrap', link: (el.closest('a[href]') || {}).href || null };
       };
@@ -97,13 +97,16 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       while ((el = ew.nextNode())) {
         const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
         const g = geom(el, R), op = opOf(el); if (!g.w && !g.h) continue;
+        { const w = []; if (cs.backgroundImage && cs.backgroundImage !== 'none' && el.tagName !== 'IMG') w.push('background-image/gradient dropped'); if (cs.clipPath !== 'none') w.push('clip-path dropped'); if (cs.filter !== 'none') w.push('filter (' + cs.filter.split('(')[0] + ') dropped'); if (cs.mixBlendMode !== 'normal') w.push('mix-blend-mode dropped'); if (cs.overflow === 'hidden' && [...el.children].some(c => { const b = c.getBoundingClientRect(), e = el.getBoundingClientRect(); return b.width && (b.left < e.left - 0.5 || b.top < e.top - 0.5 || b.right > e.right + 0.5 || b.bottom > e.bottom + 0.5); })) w.push('overflow:hidden clips a child (clip not reproduced)'); if (+cs.opacity < 1 && el.children.length > 1) w.push('group opacity is applied per child (overlaps look darker)'); if (['l', 't'].some(k => ({ l: cs.borderLeftStyle, t: cs.borderTopStyle })[k] === 'double')) w.push('double border drawn as solid');
+          if (w.length) warns.push(el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : '') + ': ' + w.join(', ')); }
         const pad = { l: parseFloat(cs.paddingLeft), r: parseFloat(cs.paddingRight), t: parseFloat(cs.paddingTop), b: parseFloat(cs.paddingBottom) };
         const bw = { l: parseFloat(cs.borderLeftWidth), r: parseFloat(cs.borderRightWidth), t: parseFloat(cs.borderTopWidth), b: parseFloat(cs.borderBottomWidth) };
         const bst = { l: cs.borderLeftStyle, r: cs.borderRightStyle, t: cs.borderTopStyle, b: cs.borderBottomStyle };
         const bc = { l: col(cs.borderLeftColor), r: col(cs.borderRightColor), t: col(cs.borderTopColor), b: col(cs.borderBottomColor) };
         const vis = k => bw[k] > 0 && bst[k] !== 'none' && bc[k].a > 0;
         const uniform = vis('l') && vis('r') && vis('t') && vis('b') && bw.l === bw.r && bw.l === bw.t && bw.l === bw.b;
-        let radius = cs.borderTopLeftRadius.includes('%') ? Math.min(g.w, g.h) / 2 : parseFloat(cs.borderTopLeftRadius) || 0;
+        const rpct = cs.borderTopLeftRadius.includes('%'); const rv = parseFloat(cs.borderTopLeftRadius) || 0; const ell = rpct && rv >= 50 && Math.abs(g.w - g.h) > 1;
+        let radius = rpct ? Math.min(g.w, g.h) * Math.min(rv, 50) / 100 : rv;
         const sh = shadow(cs);
         if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op }); continue; }
         if (el.tagName === 'IMG') {
@@ -111,7 +114,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         } else {
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
           if ((bg && bg.a > 0) || uniform || hasText) {
-            const it = { type: 'shape', ...g, op, radius, fill: bg && bg.a > 0 ? bg : null, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null } : null, shadow: sh, pad, bw };
+            const it = { type: 'shape', ...g, op, radius, ell, fill: bg && bg.a > 0 ? bg : null, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null } : null, shadow: sh, pad, bw };
             if (hasText) it.text = textOf(el, cs, g);
             items.push(it);
           }
@@ -123,7 +126,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         }
       }
       const links = [...sec.querySelectorAll('a[href]')].filter(a => !a.textContent.trim()).map(e => ({ type: 'link', href: e.href, ...geom(e.offsetWidth ? e : e.parentElement, R) }));
-      return { i: si, id: sec.id, items: items.concat(links) };
+      return { i: si, id: sec.id, warns, items: items.concat(links) };
     });
   });
   await p.addStyleTag({ content: 'img,svg{visibility:hidden !important}' });

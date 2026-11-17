@@ -29,11 +29,11 @@ def shadow(spPr, sh, op=1.0):
     ef = E('a:effectLst', spPr)
     o = E('a:outerShdw', ef, blurRad=emu(sh['blur']), dist=emu(math.hypot(sh['x'], sh['y'])), dir=int(round((math.degrees(math.atan2(sh['y'], sh['x'])) % 360) * 60000)), algn='ctr', rotWithShape='0')
     s = E('a:srgbClr', o, val=hexc(sh['c'])); E('a:alpha', s, val=int(round(sh['c']['a'] * op * 100000)))
-def geom(spPr, w, h, radius):
+def geom(spPr, w, h, radius, ell=False):
     for g in spPr.findall(qn('a:prstGeom')): spPr.remove(g)
     m = min(w, h)
     if radius <= 0.5: g = E('a:prstGeom', None, prst='rect'); E('a:avLst', g)
-    elif radius >= m / 2 - 0.5 and abs(w - h) < 1: g = E('a:prstGeom', None, prst='ellipse'); E('a:avLst', g)
+    elif ell or (radius >= m / 2 - 0.5 and abs(w - h) < 1): g = E('a:prstGeom', None, prst='ellipse'); E('a:avLst', g)
     else:
         g = E('a:prstGeom', None, prst='roundRect'); av = E('a:avLst', g)
         E('a:gd', av, name='adj', fmla='val %d' % int(round(min(C.MAX_RADIUS_FRACTION, radius / m) * 100000)))
@@ -49,7 +49,8 @@ def text_body(sp, it, ins, forced):
     t = it['text']; txBody = sp._element.find(qn('p:txBody'))
     if txBody is None: txBody = E('p:txBody', sp._element)
     for ch in list(txBody): txBody.remove(ch)
-    E('a:bodyPr', txBody, wrap='square', lIns=emu(ins[0]), tIns=emu(ins[1]), rIns=emu(ins[2]), bIns=emu(ins[3]), anchor='ctr' if t['anchor'] == 'middle' else 't', rtlCol='0')
+    nowrap = C.WRAP_NONE_TIGHT and (t.get('nowrap') or t.get('over', 0) > 0.5 or (t.get('tight') and (t['lines'] == 1 or forced)))
+    E('a:bodyPr', txBody, wrap='none' if nowrap else 'square', lIns=emu(ins[0]), tIns=emu(ins[1]), rIns=emu(ins[2]), bIns=emu(ins[3]), anchor='ctr' if t['anchor'] == 'middle' else 't', rtlCol='0')
     E('a:lstStyle', txBody); p = E('a:p', txBody)
     pPr = E('a:pPr', p, algn={'left': 'l', 'center': 'ctr', 'right': 'r'}[t['align']])
     ls = E('a:lnSpc', pPr); E('a:spcPct', ls, val=int(round(FDB.spc_pct(t['fam'], t['lh']) * 100000)))
@@ -104,19 +105,21 @@ def add_shape(slide, it):
     forced = False
     if t:
         forced = bool(t.get('risky') or (t.get('tight') and t.get('wraps')) or any(r.get('ls') for r in t['runs'] if not r.get('br')))
-        k = C.ROUND_TEXT_INSET * min(radius, min(w, h) / 2); ins = [max(0, v - k) for v in ins]
+        if it.get('ell'): kx, ky = 0.1464 * w, 0.1464 * h; ins = [max(0, ins[0] - kx), max(0, ins[1] - ky), max(0, ins[2] - kx), max(0, ins[3] - ky)]
+        else: k = C.ROUND_TEXT_INSET * min(radius, min(w, h) / 2); ins = [max(0, v - k) for v in ins]
         shift = FDB.dy(t['fam'], t['lh'], t['fs'])
         ls_min = min([r.get('ls', 0) for r in t['runs'] if not r.get('br')] + [0])
         single = t['lines'] == 1
         extra = 0
         if single or forced or t.get('tight'): extra = max(C.WIDEN_MIN_PX, C.WIDEN_FRACTION * (w - ins[0] - ins[2])) + (-ls_min * t['maxChars'] if ls_min < 0 else 0)
         elif not fill and not stroke: extra = C.WIDEN_MULTILINE_PX
+        if t.get('over', 0) > 0.5: extra += t['over']          # text sticks out of its box in the browser (nowrap, long word): Google would wrap it
         if fill or stroke:      # keep the shape; make room inside it
             if t['anchor'] == 'middle':
                 if shift > 0: ins[1] += 2 * shift
                 else: ins[3] += -2 * shift
             else: ins[1] = max(0, ins[1] + shift)
-            if extra:
+            if extra:       # use the padding as slack. (Negative insets for the rest were tested: Google ignores them.)
                 if t['align'] == 'center': ins[0] = ins[2] = 0
                 elif t['align'] == 'left': ins[2] = 0
                 else: ins[0] = 0
@@ -125,7 +128,7 @@ def add_shape(slide, it):
             dx, dyy = rot_vec(ox, shift, rot); cx += dx; cy += dyy; w += extra
     sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - w / 2), emu(cy - h / 2), max(1, emu(w)), max(1, emu(h)))
     if abs(rot) > 0.01: sp.rotation = rot
-    spPr = strip(sp); geom(spPr, w, h, radius)
+    spPr = strip(sp); geom(spPr, w, h, radius, it.get('ell', False))
     if fill: color(spPr, fill, op)
     else: E('a:noFill', spPr)
     ln = E('a:ln', spPr)
@@ -211,7 +214,7 @@ _PLACEHOLDER = None
 def _placeholder_png():
     global _PLACEHOLDER
     if _PLACEHOLDER is None:
-        import io; b = io.BytesIO(); Image.new('RGBA', (1, 1), (200, 200, 200, 255)).save(b, 'PNG'); _PLACEHOLDER = b.getvalue()
+        import io; b = io.BytesIO(); Image.new('RGBA', (1, 1), (255, 255, 255, 0)).save(b, 'PNG'); _PLACEHOLDER = b.getvalue()
     return _PLACEHOLDER
 
 def add_picture_mask(slide, it, path, slide_id, n):
@@ -233,7 +236,7 @@ def add_picture_mask(slide, it, path, slide_id, n):
     key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]
     a = ASSETS.setdefault(key, dict(file=path, mime='image/gif' if path.lower().endswith('.gif') else 'image/jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'image/png', maxw=0))
     a['maxw'] = max(a['maxw'], pw)
-    if it.get('shadow'):
+    if it.get('shadow') and C.PICTURE_SHADOW == 'shape':
         c = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - pw / 2 + C.SHADOW_INSET_PX), emu(cy - ph / 2 + C.SHADOW_INSET_PX), emu(pw - 2 * C.SHADOW_INSET_PX), emu(ph - 2 * C.SHADOW_INSET_PX))
         if abs(rot) > 0.01: c.rotation = rot
         spPr = strip(c); geom(spPr, pw - 2 * C.SHADOW_INSET_PX, ph - 2 * C.SHADOW_INSET_PX, max(0, radius - C.SHADOW_INSET_PX)); color(spPr, dict(r=255, g=255, b=255, a=1)); ln = E('a:ln', spPr); E('a:noFill', ln)
@@ -244,6 +247,9 @@ def add_picture_mask(slide, it, path, slide_id, n):
     pic = slide.shapes.add_picture(io.BytesIO(_placeholder_png()), emu(cx - pw / 2), emu(cy - ph / 2), max(1, emu(pw)), max(1, emu(ph)))
     if abs(rot) > 0.01: pic.rotation = rot
     geom(pic._element.spPr, pw, ph, radius)
+    if it.get('shadow') and C.PICTURE_SHADOW == 'native': shadow(pic._element.spPr, it['shadow'], it.get('op', 1))
+    if C.PICTURE_ALPHA and it.get('op', 1) < 0.999:
+        blip = pic._element.find('.//' + qn('a:blip')); E('a:alphaModFix', blip, amt=int(round(it['op'] * 100000)))
     tag = '%s.%d.%s' % (slide_id, n, key); pic._element.nvPicPr.cNvPr.set('descr', tag); pic.name = tag
     ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
     return pic

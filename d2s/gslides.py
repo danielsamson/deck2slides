@@ -21,7 +21,7 @@ def bundle_urls(pres):
     return {e['description']: e['image']['contentUrl'] for _, _, e in _elements(pres) if e.get('description') and e.get('image', {}).get('contentUrl')}
 
 def replace_image_requests(elements, tag_to_id, key_to_url):
-    """mask mode: one replaceImage per picture element (+ transparency when the CSS opacity was < 1). Elements whose
+    """mask mode: one replaceImage per picture element (opacity is NOT sent: the API refuses to update image transparency; it has to be in the uploaded placeholder). Elements whose
     bundle URL is not in key_to_url are skipped, so a bundle can be finished before the next starts."""
     reqs = []; missing = []
     for el in elements:
@@ -29,8 +29,6 @@ def replace_image_requests(elements, tag_to_id, key_to_url):
         if not oid: missing.append(el['tag']); continue
         if not url: continue
         reqs.append({'replaceImage': {'imageObjectId': oid, 'url': url, 'imageReplaceMethod': el['method']}})
-        if el.get('transparency', 0) > 0.001:
-            reqs.append({'updateImageProperties': {'objectId': oid, 'imageProperties': {'transparency': el['transparency']}, 'fields': 'transparency'}})
     return reqs, missing
 
 def replace_shape_requests(keys, key_to_url):
