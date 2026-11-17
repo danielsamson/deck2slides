@@ -15,7 +15,13 @@
   "rotation",
   "pictures",
   "picture-effects",
-  "gif"
+  "gif",
+  "grid",
+  "colour",
+  "text-styles",
+  "layering",
+  "unsupported",
+  "composite"
  ],
  "faces": {
   "inter": {

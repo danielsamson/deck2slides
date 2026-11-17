@@ -1,0 +1,8 @@
+<section id="layering">
+<div style="position:absolute;left:100px;top:100px;width:400px;height:400px;background:#FF4A1C;border-radius:40px"></div>
+<div style="position:absolute;left:300px;top:200px;width:400px;height:400px;background:rgba(107,91,255,.8);border-radius:200px"></div>
+<div style="position:absolute;left:500px;top:300px;width:400px;height:400px;background:#B4F000;border:6px solid #14142E;transform:rotate(12deg)"></div>
+<div style="position:absolute;left:1100px;top:100px;width:500px;height:300px;overflow:hidden;background:#eef;border-radius:30px"><div style="position:absolute;left:-60px;top:-40px;width:400px;height:400px;background:#FF4A1C;border-radius:200px"></div></div>
+<div style="position:absolute;left:1100px;top:440px;width:500px;font:500 22px Inter;color:#666">Left: overlapping shapes (z-order, alpha, rotation). Right: overflow:hidden clips a child (not expressible natively; shows what is lost).</div>
+<div style="position:absolute;left:1100px;top:700px;width:600px;height:200px;opacity:.5"><div style="position:absolute;left:0;top:0;width:300px;height:200px;background:#14142E"></div><div style="position:absolute;left:150px;top:0;width:300px;height:200px;background:#FF4A1C"></div></div>
+</section>
