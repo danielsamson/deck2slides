@@ -10,7 +10,8 @@ def test_five_page_ground_truth():
     g = d['grid']
     assert (g['columns'], g['gutter'], g['column_width'], g['margin_left'], g['margin_right']) == (12, 16.0, 124.0, 128.0, 128.0)
     roles = d['colour']['roles']
-    assert roles['ink'] == '#14142E' and roles['paper'] == '#F5F2EA' and roles['accent-1'] == '#6B5BFF'
+    assert roles['ink'] == '#14142E' and roles['paper'] == '#F5F2EA'
+    assert {roles['accent-1'], roles['accent-2'], roles['accent-3']} == {'#6B5BFF', '#FF4A1C', '#B4F000'}  # translucent guide stripes ignored
     assert [s['px'] for s in d['type']['sizes']][:3] == [144, 96, 56]
 
 

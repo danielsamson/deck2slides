@@ -4,32 +4,32 @@
  "colour": {
   "fills": [
    {
-    "hex": "#6B5BFF",
-    "share": 0.7887
-   },
-   {
     "hex": "#FFFFFF",
-    "share": 0.1827
+    "share": 0.8473
    },
    {
     "hex": "#FF4A1C",
-    "share": 0.0114
+    "share": 0.0527
    },
    {
     "hex": "#B4F000",
-    "share": 0.0043
+    "share": 0.02
    },
    {
     "hex": "#14142E",
-    "share": 0.0043
+    "share": 0.02
    },
    {
     "hex": "#F5F2EA",
-    "share": 0.0043
+    "share": 0.02
+   },
+   {
+    "hex": "#6B5BFF",
+    "share": 0.02
    },
    {
     "hex": "#5B5F73",
-    "share": 0.0043
+    "share": 0.02
    },
    {
     "hex": "#D8D3C4",
@@ -93,9 +93,9 @@
    "mute": "#5B5F73",
    "paper": "#F5F2EA",
    "surface": "#FFFFFF",
-   "accent-1": "#6B5BFF",
-   "accent-2": "#FF4A1C",
-   "accent-3": "#B4F000"
+   "accent-1": "#FF4A1C",
+   "accent-2": "#B4F000",
+   "accent-3": "#6B5BFF"
   }
  },
  "type": {
@@ -116,7 +116,9 @@
     "fonts": [
      "Bricolage Grotesque"
     ],
-    "bold_share": 1.0
+    "bold_share": 1.0,
+    "weight": 800,
+    "lh_mult": 0.787
    },
    {
     "px": 96.0,
@@ -124,7 +126,9 @@
     "fonts": [
      "Bricolage Grotesque"
     ],
-    "bold_share": 1.0
+    "bold_share": 1.0,
+    "weight": 700,
+    "lh_mult": 0.833
    },
    {
     "px": 56.0,
@@ -132,7 +136,9 @@
     "fonts": [
      "Bricolage Grotesque"
     ],
-    "bold_share": 1.0
+    "bold_share": 1.0,
+    "weight": 700,
+    "lh_mult": 0.952
    },
    {
     "px": 40.0,
@@ -140,7 +146,9 @@
     "fonts": [
      "Inter"
     ],
-    "bold_share": 1.0
+    "bold_share": 1.0,
+    "weight": 600,
+    "lh_mult": 0.919
    },
    {
     "px": 32.0,
@@ -148,7 +156,9 @@
     "fonts": [
      "Inter"
     ],
-    "bold_share": 0.0
+    "bold_share": 0.0,
+    "weight": 400,
+    "lh_mult": 1.148
    },
    {
     "px": 28.0,
@@ -156,7 +166,9 @@
     "fonts": [
      "Inter"
     ],
-    "bold_share": 0.0
+    "bold_share": 0.0,
+    "weight": 400,
+    "lh_mult": 1.074
    },
    {
     "px": 24.0,
@@ -164,7 +176,9 @@
     "fonts": [
      "Inter"
     ],
-    "bold_share": 0.1
+    "bold_share": 0.1,
+    "weight": 500,
+    "lh_mult": 1.114
    }
   ],
   "weights": [
@@ -298,6 +312,32 @@
   "samples": 227
  },
  "shape": {
+  "shadows": [
+   {
+    "dx": 0,
+    "dy": 24,
+    "blur": 48,
+    "color": "#14142E",
+    "alpha": 0.14,
+    "n": 3
+   },
+   {
+    "dx": 0,
+    "dy": 32,
+    "blur": 64,
+    "color": "#14142E",
+    "alpha": 0.25,
+    "n": 1
+   },
+   {
+    "dx": 0,
+    "dy": 32,
+    "blur": 64,
+    "color": "#000000",
+    "alpha": 0.35,
+    "n": 1
+   }
+  ],
   "radii": [
    {
     "px": 22,
@@ -305,6 +345,10 @@
    },
    {
     "px": 32,
+    "n": 2
+   },
+   {
+    "px": 40,
     "n": 2
    }
   ],
@@ -319,7 +363,7 @@
    }
   ],
   "circles": 2,
-  "shadow_elements": 3
+  "shadow_elements": 5
  },
  "layouts": [
   {

@@ -26,7 +26,7 @@ def hexcol(r, g, b):
 # --------------------------------------------------------------------------
 # adapters
 # --------------------------------------------------------------------------
-def from_gslides(slides_json, masters_json=None):
+def from_gslides(slides_json, masters_json=None, extra_json=None):
     """slides_json / masters_json: dicts as returned by presentations.get."""
     content = slides_json.get('content', slides_json)
     mc = (masters_json or {}).get('content', masters_json or {})
@@ -51,6 +51,10 @@ def from_gslides(slides_json, masters_json=None):
             return scheme.get(c['themeColor'])
         return None
 
+    ex = {}
+    for sl in (extra_json or {}).get('content', extra_json or {}).get('slides', []):
+        for pe in sl.get('pageElements', []):
+            ex[pe['objectId']] = pe.get('shape', {})
     scale = W / 9144000.0
     page_w = content.get('pageSize', {}).get('width', {}).get('magnitude', 9144000)
     scale = W / page_w
@@ -94,14 +98,28 @@ def from_gslides(slides_json, masters_json=None):
                 if ol and ol.get('outlineFill', {}).get('solidFill'):
                     el['stroke'] = dict(color=col(ol['outlineFill']['solidFill']),
                                         w=ol.get('weight', {}).get('magnitude', 0) * scale)
-                el['shadow'] = False  # presentations.get returns a shadow stub on every shape; not evidence
+                # presentations.get returns a NOT_RENDERED stub on every shape: only a rendered one with blur is a shadow
+                sh = ex.get(e.get('objectId'), {}).get('shapeProperties', {}).get('shadow')
+                if sh and sh.get('propertyState') != 'NOT_RENDERED' and sh.get('blurRadius', {}).get('magnitude') and sh.get('alpha', 1) > 0:
+                    tr = sh.get('transform', {})
+                    c = sh.get('color', {}).get('rgbColor', {})
+                    el['shadow'] = True
+                    el['shadow_spec'] = dict(dx=round(tr.get('translateX', 0) * scale), dy=round(tr.get('translateY', 0) * scale),
+                                             blur=round(sh['blurRadius']['magnitude'] * scale),
+                                             color=hexcol(c.get('red', 0), c.get('green', 0), c.get('blue', 0)),
+                                             alpha=round(sh.get('alpha', 1), 2))
                 st = s.get('shapeType', '')
                 if st == 'ROUND_RECTANGLE':
                     el['radius'] = min(w, h) * 0.1667
                 elif st == 'ELLIPSE':
                     el['radius'] = min(w, h) / 2
                 el['ph'] = (s.get('placeholder') or {}).get('type')
-                for te in s.get('text', {}).get('textElements', []):
+                tes = ex.get(e.get('objectId'), {}).get('text', {}).get('textElements') or s.get('text', {}).get('textElements', [])
+                ls = None
+                for te in tes:
+                    pm = te.get('paragraphMarker')
+                    if pm:
+                        ls = pm.get('style', {}).get('lineSpacing')
                     tr = te.get('textRun')
                     if not tr or not tr.get('content', '').strip():
                         continue
@@ -109,9 +127,12 @@ def from_gslides(slides_json, masters_json=None):
                     fs = stl.get('fontSize', {}).get('magnitude')
                     if not fs:
                         continue
-                    el['runs'].append(dict(font=stl.get('fontFamily'), px=fs * pt,
-                                           bold=bool(stl.get('bold')),
-                                           color=col(stl.get('foregroundColor')),
+                    wf = stl.get('weightedFontFamily') or {}
+                    el['runs'].append(dict(font=wf.get('fontFamily') or stl.get('fontFamily'), px=fs * pt,
+                                           bold=bool(stl.get('bold')) or wf.get('weight', 400) >= 700,
+                                           weight=wf.get('weight') or (700 if stl.get('bold') else 400),
+                                           lh=(ls / 100.0) if ls else None,
+                                           color=col(stl.get('foregroundColor')) or scheme.get('DARK1') or '#000000',  # unset text inherits the theme's dark colour
                                            n=len(tr['content'].strip())))
                 if el['runs']:
                     el['kind'] = 'text'
@@ -141,6 +162,16 @@ def from_gslides(slides_json, masters_json=None):
 
 def page_h(content, scale):
     return content.get('pageSize', {}).get('height', {}).get('magnitude', 5143500) * scale
+
+
+def _pptx_shadow(xml, scale):
+    ms = re.search(r'<a:outerShdw blurRad="(\d+)" dist="(\d+)" dir="(\d+)"[^>]*>\s*<a:srgbClr val="([0-9A-Fa-f]{6})">\s*<a:alpha val="(\d+)"', xml, re.S)
+    if not ms:
+        return None
+    dist = int(ms.group(2)) * scale
+    ang = int(ms.group(3)) / 60000.0 * math.pi / 180
+    return dict(dx=round(dist * math.cos(ang)), dy=round(dist * math.sin(ang)), blur=round(int(ms.group(1)) * scale),
+                color='#' + ms.group(4).upper(), alpha=round(int(ms.group(5)) / 100000.0, 2))
 
 
 def from_pptx(path):
@@ -174,10 +205,15 @@ def from_pptx(path):
                       shadow=False, stroke=None, runs=[], ph=None, kind='shape')
             if sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 el['kind'] = 'image'
+                el['shadow_spec'] = _pptx_shadow(sh._element.xml, scale)
+                el['shadow'] = bool(el['shadow_spec'])
+                m_r = re.search(r'prst="roundRect".*?<a:gd name="adj" fmla="val (\d+)"', sh._element.xml, re.S)
+                if m_r:
+                    el['radius'] = min(el['w'], el['h']) * int(m_r.group(1)) / 100000.0
             else:
                 try:
                     el['fill'] = rgb(sh.fill)
-                    m_a = re.search(r'<a:solidFill><a:srgbClr val="[0-9A-Fa-f]{6}"><a:alpha val="(\d+)"', sh._element.spPr.xml)
+                    m_a = re.search(r'<a:solidFill>\s*<a:srgbClr val="[0-9A-Fa-f]{6}">\s*<a:alpha val="(\d+)"', sh._element.spPr.xml)
                     el['alpha'] = int(m_a.group(1)) / 100000.0 if m_a else 1.0
                 except Exception:
                     pass
@@ -195,6 +231,7 @@ def from_pptx(path):
                 elif 'prst="ellipse"' in xml:
                     el['radius'] = min(el['w'], el['h']) / 2
                 el['shadow'] = 'outerShdw' in xml
+                el['shadow_spec'] = _pptx_shadow(xml, scale)
                 if sh.is_placeholder:
                     el['ph'] = str(sh.placeholder_format.type).split('.')[-1].split(' ')[0]
                 if sh.has_text_frame:
@@ -207,8 +244,11 @@ def from_pptx(path):
                                 c = '#' + str(r.font.color.rgb)
                             except Exception:
                                 pass
+                            lsp = p.line_spacing
                             el['runs'].append(dict(font=r.font.name, px=r.font.size.pt * pt,
-                                                   bold=bool(r.font.bold), color=c, n=len(r.text.strip())))
+                                                   bold=bool(r.font.bold), color=c, n=len(r.text.strip()),
+                                                   weight=split_font(r.font.name, bool(r.font.bold))[1],
+                                                   lh=float(lsp) if isinstance(lsp, float) else None))
                     if el['runs']:
                         el['kind'] = 'text'
             out.append(el)
@@ -338,6 +378,7 @@ def derive_type(model):
     by = Counter()
     fam = Counter()
     wts = Counter()
+    sw, slh = defaultdict(Counter), defaultdict(Counter)
     for e in model['elements']:
         for r in e['runs']:
             f, w = split_font(r['font'], r['bold'])
@@ -345,6 +386,9 @@ def derive_type(model):
             by[key] += r['n']
             fam[f] += r['n']
             wts[(f, w)] += r['n']
+            sw[round(r['px'] * 2) / 2][r.get('weight') or w] += r['n']
+            if r.get('lh'):
+                slh[round(r['px'] * 2) / 2][round(r['lh'], 3)] += r['n']
     sizes = Counter()
     for (px, f, b), n in by.items():
         sizes[px] += n
@@ -360,7 +404,9 @@ def derive_type(model):
         families=[dict(font=f, share=round(n / tot, 4)) for f, n in fam.most_common()],
         sizes=[dict(px=s, share=round(sizes[s] / tot, 4),
                     fonts=sorted({f for (p, f, b) in by if p == s and f})[:3],
-                    bold_share=round(sum(n for (p, f, b), n in by.items() if p == s and b) / sizes[s], 2))
+                    bold_share=round(sum(n for (p, f, b), n in by.items() if p == s and b) / sizes[s], 2),
+                    weight=sw[s].most_common(1)[0][0] if sw[s] else None,
+                    lh_mult=slh[s].most_common(1)[0][0] if slh[s] else None)
                for s in ladder],
         weights=[dict(font=f, weight=w, share=round(n / tot, 4)) for (f, w), n in wts.most_common()],
         base_px=base, median_step_ratio=round(median, 3) if median else None)
@@ -566,7 +612,11 @@ def derive_shape(model):
     circles = sum(1 for e in model['elements'] if e['radius'] and e['radius'] >= min(e['w'], e['h']) / 2 - 1 and e['w'] > 24)
     strokes = Counter(round(e['stroke']['w']) for e in model['elements'] if e['stroke'] and e['stroke'].get('w'))
     shadows = sum(1 for e in model['elements'] if e['shadow'])
-    return dict(radii=[dict(px=r, n=n) for r, n in rad.most_common(6)],
+    sh = Counter((e['shadow_spec']['dx'], e['shadow_spec']['dy'], e['shadow_spec']['blur'],
+                  e['shadow_spec']['color'], e['shadow_spec']['alpha'])
+                 for e in model['elements'] if e.get('shadow_spec'))
+    return dict(shadows=[dict(dx=k[0], dy=k[1], blur=k[2], color=k[3], alpha=k[4], n=n) for k, n in sh.most_common(4)],
+                radii=[dict(px=r, n=n) for r, n in rad.most_common(6)],
                 strokes=[dict(px=r, n=n) for r, n in strokes.most_common(5)], circles=circles,
                 shadow_elements=shadows)
 

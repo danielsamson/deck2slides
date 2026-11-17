@@ -1,4 +1,4 @@
-# Design system derived from five-page
+# Design system derived from Five Page
 
 5 slides, 88 elements measured. Every number below was measured, not assumed.
 
@@ -10,11 +10,11 @@
 | mute | `#5B5F73` |
 | paper | `#F5F2EA` |
 | surface | `#FFFFFF` |
-| accent-1 | `#6B5BFF` |
-| accent-2 | `#FF4A1C` |
-| accent-3 | `#B4F000` |
+| accent-1 | `#FF4A1C` |
+| accent-2 | `#B4F000` |
+| accent-3 | `#6B5BFF` |
 
-Fills by area share: `#6B5BFF` 79%, `#FFFFFF` 18%, `#FF4A1C` 1%, `#B4F000` 0%, `#14142E` 0%, `#F5F2EA` 0%, `#5B5F73` 0%, `#D8D3C4` 0%
+Fills by area share: `#FFFFFF` 85%, `#FF4A1C` 5%, `#B4F000` 2%, `#14142E` 2%, `#F5F2EA` 2%, `#6B5BFF` 2%, `#5B5F73` 2%, `#D8D3C4` 0%
 
 ## Type
 
@@ -44,7 +44,7 @@ Base unit 4 px explains 75% of 227 measured gaps. Common gaps: 16, 26, 33, 44, 4
 
 ## Shape
 
-Radii: 22px x6, 32px x2. Strokes: 2px x6, 12px x1. Elements with shadows: 3. Circles: 2.
+Radii: 22px x6, 32px x2, 40px x2. Strokes: 2px x6, 12px x1. Elements with shadows: 5. Circles: 2.
 
 ## Slide kinds
 

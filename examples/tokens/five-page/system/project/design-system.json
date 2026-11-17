@@ -1,0 +1,25 @@
+{
+ "v": 3,
+ "layout": "files",
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-17T20:08:46Z"
+ },
+ "title": "Five Page",
+ "namespace": "FivePage",
+ "libraries": [],
+ "sections": {},
+ "groups": [],
+ "assetGroups": {},
+ "blobs": {},
+ "docs": {
+  "readme": "project/README.md",
+  "sections": []
+ },
+ "lastChange": {
+  "by": "Claude",
+  "at": "2026-11-17T20:08:46Z",
+  "via": "deck2slides tokens",
+  "note": "Derived from a deck"
+ }
+}

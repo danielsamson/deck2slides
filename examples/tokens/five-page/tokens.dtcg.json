@@ -1,5 +1,5 @@
 {
- "$description": "Derived by deck2slides from five-page. Measured, not authored.",
+ "$description": "Derived by deck2slides from Five Page. Measured, not authored.",
  "color": {
   "ink": {
    "$type": "color",
@@ -19,15 +19,15 @@
   },
   "accent-1": {
    "$type": "color",
-   "$value": "#6B5BFF"
+   "$value": "#FF4A1C"
   },
   "accent-2": {
    "$type": "color",
-   "$value": "#FF4A1C"
+   "$value": "#B4F000"
   },
   "accent-3": {
    "$type": "color",
-   "$value": "#B4F000"
+   "$value": "#6B5BFF"
   }
  },
  "font": {
@@ -108,6 +108,10 @@
   "r1": {
    "$type": "dimension",
    "$value": "32px"
+  },
+  "r2": {
+   "$type": "dimension",
+   "$value": "40px"
   }
  }
 }

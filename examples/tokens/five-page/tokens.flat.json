@@ -1,14 +1,14 @@
 {
- "name": "five-page",
+ "name": "Five Page",
  "derived": true,
  "colour": {
   "ink": "#14142E",
   "mute": "#5B5F73",
   "paper": "#F5F2EA",
   "surface": "#FFFFFF",
-  "accent-1": "#6B5BFF",
-  "accent-2": "#FF4A1C",
-  "accent-3": "#B4F000"
+  "accent-1": "#FF4A1C",
+  "accent-2": "#B4F000",
+  "accent-3": "#6B5BFF"
  },
  "type": {
   "families": [
@@ -66,7 +66,8 @@
  },
  "radius_px": [
   22,
-  32
+  32,
+  40
  ],
  "stroke_px": [
   2,
