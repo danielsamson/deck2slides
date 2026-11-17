@@ -6,9 +6,9 @@
 
 | Role | Hex |
 | --- | --- |
+| paper | `#F5F2EA` |
 | ink | `#14142E` |
 | mute | `#5B5F73` |
-| paper | `#F5F2EA` |
 | surface | `#FFFFFF` |
 | accent-1 | `#FF4A1C` |
 | accent-2 | `#B4F000` |

@@ -94,34 +94,47 @@ def build_tokens(d, name, cache, outdir, fetch=True):
                                    for i, x in enumerate(sh)]}
     # contrast: notes on text colours, on-colours for accents
     cols = {t['name']: t for t in tk['color']['tokens']}
-    paper, surface = cols.get('paper', {}).get('value'), cols.get('surface', {}).get('value')
-    grounds = [(n, v) for n, v in (('paper', paper), ('surface', surface)) if v]
+    tids = [t['id'] for t in tk['color']['themes']]
+    val = lambda tok, th: (tok['value'][th] if isinstance(tok['value'], dict) else tok['value']) if tok else None
+    paper, surface = cols.get('paper'), cols.get('surface')
     fails = []
     for role in ('ink', 'mute'):
-        if role in cols and grounds:
+        if role in cols:
             parts = []
-            for gn, gv in grounds:
-                c = contrast(cols[role]['value'], gv)
-                parts.append('%.1f:1 on `%s`' % (c, gn))
-                if c < 4.5:
-                    fails.append('%s on %s %.1f:1' % (role, gn, c))
+            for th in tids:
+                for gn, gt in (('paper', paper), ('surface', surface)):
+                    gv, rv = val(gt, th), val(cols[role], th)
+                    if gv:
+                        c = contrast(rv, gv)
+                        parts.append('%.1f:1 on `%s`%s' % (c, gn, (' (%s)' % th) if len(tids) > 1 else ''))
+                        if c < 4.5:
+                            fails.append('%s on %s in %s %.1f:1' % (role, gn, th, c))
             cols[role]['usage'] = cols[role]['usage'].rstrip('.') + '. Contrast ' + ', '.join(parts) + '.'
-    ink, white = cols.get('ink', {}).get('value', '#000000'), '#ffffff'
+    # text colours to try on an accent: every ink and paper value the system has (so black counts on a gold accent
+    # when black is the paper of one theme), never colours outside the palette
+    cands = []
+    for nm in ('ink', 'paper'):
+        for th in tids:
+            v = val(cols.get(nm), th)
+            if v and v not in cands:
+                cands.append(v)
+    ink = cands[0] if cands else '#000000'
     on = []
     for t in list(tk['color']['tokens']):
         if t['name'].startswith('accent-'):
-            ci, cw = contrast(t['value'], ink), contrast(t['value'], white)
-            best, bc = (ink, ci) if ci >= cw else (white, cw)
+            best = max(cands or ['#000000'], key=lambda c: contrast(t['value'], c))
+            bc = contrast(t['value'], best)
             on.append({'name': 'on-' + t['name'], 'value': best,
                        'usage': 'Text and icons on `%s`: %s, %.1f:1%s.' % (
-                           t['name'], 'ink' if best == ink else 'white', bc, '' if bc >= 4.5 else ' (below 4.5:1, use at 24px or larger only)')})
+                           t['name'], best, bc, '' if bc >= 4.5 else ' (below 4.5:1, use at 24px or larger only)')})
             if bc < 3:
                 fails.append('%s best text %.1f:1' % (t['name'], bc))
             if paper:
-                t['usage'] += ' %.1f:1 against `paper`.' % contrast(t['value'], paper)
+                t['usage'] += ' ' + ', '.join('%.1f:1 against `paper`%s' % (contrast(t['value'], val(paper, th)), (' (%s)' % th) if len(tids) > 1 else '') for th in tids) + '.'
     tk['color']['tokens'] += on
     # fonts
-    wanted = {(f, w['weight']) for w in ty.get('weights', []) for f in [w['font']] if f}
+    SYSTEM = {'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Verdana', 'Tahoma', 'Courier New', 'Trebuchet MS', 'Calibri', 'Cambria', 'Segoe UI'}
+    wanted = {(f, w['weight']) for w in ty.get('weights', []) for f in [w['font']] if f and f not in SYSTEM}
     files, missing = ({}, []) if not fetch else fetch_font_files(wanted, outdir, cache)
     tk['type']['fonts'] = [{'family': f, 'file': p, 'weight': str(w)} for (f, w), p in sorted(files.items())]
     if missing:
@@ -300,7 +313,7 @@ def readme(d, tk, comps, fails, missing, name):
         L.append('- Contrast below 4.5:1 in the source palette, kept exact: %s.' % '; '.join(fails))
     L.append('\n## Type\n')
     for g in tk['type']['groups']:
-        L.append('- %s styles in the %s face: %s.' % (g['name'], g['family'], ', '.join('`%s` (%s)' % (s['name'], s['fontSize']) for s in g['styles'])))
+        L.append('- %s styles in %s: %s.' % (g['name'], tk['type']['families'][g['family']].split(',')[0].strip('"'), ', '.join('`%s` (%s)' % (s['name'], s['fontSize']) for s in g['styles'])))
     if missing:
         L.append('- No font file is bundled for %s; load it from your own licence or fall back to the stack.' % ', '.join(missing))
     g = d['grid']
@@ -359,8 +372,10 @@ def build(model, d, name, outdir, tagline=None, fetch=True):
 def compile_css(tk):
     """Local stand-in for the page's tokens.css, only to render previews offline."""
     L = [':root{']
+    first = tk['color']['themes'][0]['id']
     for t in tk['color']['tokens']:
-        L.append('--%s:%s;' % (t['name'], t['value']))
+        v = t['value']
+        L.append('--%s:%s;' % (t['name'], v[first] if isinstance(v, dict) else v))
     for fam in ('shadow', 'spacing', 'radius'):
         for t in tk.get(fam, {}).get('tokens', []):
             L.append('--%s:%s;' % (t['name'], t['value']))

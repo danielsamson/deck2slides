@@ -1,6 +1,10 @@
 {
  "$description": "Derived by deck2slides from Five Page. Measured, not authored.",
  "color": {
+  "paper": {
+   "$type": "color",
+   "$value": "#F5F2EA"
+  },
   "ink": {
    "$type": "color",
    "$value": "#14142E"
@@ -8,10 +12,6 @@
   "mute": {
    "$type": "color",
    "$value": "#5B5F73"
-  },
-  "paper": {
-   "$type": "color",
-   "$value": "#F5F2EA"
   },
   "surface": {
    "$type": "color",
@@ -46,25 +46,25 @@
     "$type": "dimension",
     "$value": "24px"
    },
-   "h3": {
+   "display-xl": {
     "$type": "dimension",
-    "$value": "28px"
+    "$value": "144px"
+   },
+   "display": {
+    "$type": "dimension",
+    "$value": "96px"
+   },
+   "h1": {
+    "$type": "dimension",
+    "$value": "56px"
    },
    "h2": {
     "$type": "dimension",
     "$value": "32px"
    },
-   "h1": {
+   "h3": {
     "$type": "dimension",
-    "$value": "40px"
-   },
-   "display": {
-    "$type": "dimension",
-    "$value": "56px"
-   },
-   "display-xl": {
-    "$type": "dimension",
-    "$value": "96px"
+    "$value": "28px"
    }
   }
  },

@@ -65,7 +65,7 @@ def tokens_cmd(a):
     if a.src.endswith('.pptx'):
         model = tokens.from_pptx(a.src)
     else:
-        model = tokens.from_gslides(json.load(open(a.src)), json.load(open(a.masters)) if a.masters else None, json.load(open(a.extra)) if a.extra else None)
+        model = tokens.from_gslides(json.load(open(a.src)), json.load(open(a.masters)) if a.masters else None, json.load(open(a.extra)) if a.extra else None, json.load(open(a.bg)) if a.bg else None)
     d = tokens.derive(model)
     os.makedirs(a.out, exist_ok=True)
     name = a.name or os.path.basename(a.src)
@@ -110,6 +110,6 @@ c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
-c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
+c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)

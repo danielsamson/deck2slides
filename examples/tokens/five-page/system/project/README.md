@@ -3,11 +3,12 @@
 - Set slides on `paper`; put cards and panels on `surface`.
 - Set headings and body copy in `ink`; use `mute` for captions and secondary lines.
 - Accents (`accent-1`, `accent-2`, `accent-3`) are ordered by how much of the source they cover; lead with `accent-1`. Put text on an accent fill in its `on-` token.
+- Contrast below 4.5:1 in the source palette, kept exact: mute on paper in dark 2.8:1; mute on surface in dark 2.8:1.
 
 ## Type
 
-- Display styles in the display face: `display-xl` (96px), `display` (56px).
-- Text styles in the body face: `h1` (40px), `h2` (32px), `h3` (28px), `body` (24px).
+- Display styles in Bricolage Grotesque: `display-xl` (144px), `display` (96px), `h1` (56px).
+- Text styles in Inter: `h2` (32px), `h3` (28px), `body` (24px).
 
 ## Layout
 

@@ -319,3 +319,17 @@ Not derived yet: shadows from the Slides API (it returns a stub on every shape),
 ## Applying a derived system (`test-decks/applied/`)
 
 `generate.py` builds a fictional three-slide deck (Trend Pulse) in the Claude Slides format from the public deck A system's `tokens.json`: every colour, radius, shadow, margin, gutter and column count reaches the slides as a CSS variable, and the script only chooses layout. `examples/applied/applied.png` shows it; `trend-pulse.pptx` is the same deck through the normal export (`d2s.py convert`). Observations: the system's body size (22.5 px) is under the format's 24 px text floor, so body copy uses `h3` (29.5 px); the derived 6-column grid is a low-confidence fit, so columns are recomputed to fill the margins using the system's gutter. Not checked: the PPTX in Google Slides (Google Sans and Roboto are not in the calibration set, so text offsets use the extrapolated values), and the deck in the live Claude Slides viewer.
+
+### Second deck: public deck B (150 slides, Google Slides JSON)
+
+`examples/tokens/deckb/` and `examples/applied-deckb/`. Running a second, very different deck (half black slides, one gold accent, DM Sans, photo backgrounds) exposed bugs in the first run, all fixed and covered by the earlier tests:
+
+- **Text colours were all read as black.** Slides API text colours sit inside `foregroundColor.opaqueColor`; the first run only read the plain form, so public deck A's ink and mute were wrong. Fixed.
+- **One paper colour for a two-tone deck.** The deck is black and white slides, so the system now gets one colour theme per common background (here `dark` and `light`), with paper and ink per theme, and contrast checked in each. Per-slide backgrounds need one more field-masked read (`--bg slides_bg.json`); picture backgrounds are counted, not coloured.
+- **False grid.** Wide photos and bars were read as drawn guide stripes (25 columns, negative gutter). Stripes now need a plausible, non-overlapping, on-canvas layout. Result: 12 columns, 38 px gutter, 86 px margins, 36% of edges on it.
+- **Template margins from unused layouts.** The deck's layouts are Google's defaults and no slide uses them; margins from a layout now count only if at least 20% of slides use it.
+- **On-accent colours** are chosen from the palette's own ink/paper values (black on the gold, 8.1:1) instead of ink of the first theme.
+- **Type names** keep the largest sizes (a 240 px title was dropped); display and body keys stay correct when one family does both; system fonts (Arial) are not fetched.
+- **Applied deck** is theme-aware and grid-agnostic (six blocks across the inner width, the system's gutter), so one script serves both systems.
+
+Still open: the deck B contrast note (mute 4.5:1) is borderline and kept exact; the Card component found there is a small 111x42 px shape, not a real card.

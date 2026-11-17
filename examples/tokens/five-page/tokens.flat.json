@@ -2,9 +2,9 @@
  "name": "Five Page",
  "derived": true,
  "colour": {
+  "paper": "#F5F2EA",
   "ink": "#14142E",
   "mute": "#5B5F73",
-  "paper": "#F5F2EA",
   "surface": "#FFFFFF",
   "accent-1": "#FF4A1C",
   "accent-2": "#B4F000",
@@ -17,11 +17,11 @@
   ],
   "scale_px": {
    "body": 24.0,
-   "h3": 28.0,
+   "display-xl": 144.0,
+   "display": 96.0,
+   "h1": 56.0,
    "h2": 32.0,
-   "h1": 40.0,
-   "display": 56.0,
-   "display-xl": 96.0
+   "h3": 28.0
   },
   "measured_sizes_px": [
    144.0,

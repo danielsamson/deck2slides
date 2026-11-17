@@ -26,7 +26,7 @@ def hexcol(r, g, b):
 # --------------------------------------------------------------------------
 # adapters
 # --------------------------------------------------------------------------
-def from_gslides(slides_json, masters_json=None, extra_json=None):
+def from_gslides(slides_json, masters_json=None, extra_json=None, bg_json=None):
     """slides_json / masters_json: dicts as returned by presentations.get."""
     content = slides_json.get('content', slides_json)
     mc = (masters_json or {}).get('content', masters_json or {})
@@ -44,6 +44,7 @@ def from_gslides(slides_json, masters_json=None, extra_json=None):
         if not c:
             return None
         c = c.get('color', c)
+        c = c.get('opaqueColor', c)   # text foregroundColor wraps its colour in opaqueColor
         if 'rgbColor' in c:
             r = c['rgbColor']
             return hexcol(r.get('red', 0), r.get('green', 0), r.get('blue', 0))
@@ -148,15 +149,33 @@ def from_gslides(slides_json, masters_json=None, extra_json=None):
         elems(lay.get('pageElements', []), 0, tmp)
         for e, raw in zip(tmp, lay.get('pageElements', [])):
             items.append(e)
-        layouts.append(dict(name=lay.get('layoutProperties', {}).get('displayName'),
+        layouts.append(dict(id=lay.get('objectId'), name=lay.get('layoutProperties', {}).get('displayName'),
                             master=lay.get('layoutProperties', {}).get('masterObjectId'),
                             items=[i for i in tmp if i['ph'] or i['kind'] != 'shape' or i['fill']]))
-    bgs = []
-    for lay in mc.get('layouts', []) + mc.get('masters', []):
+    # Background per slide: its own fill, else its layout's, else the master's. Picture fills are not a colour.
+    lay_bg = {}
+    for lay in mc.get('layouts', []):
         f = lay.get('pageProperties', {}).get('pageBackgroundFill', {}).get('solidFill')
-        if f and col(f):
-            bgs.append(col(f))
-    return dict(elements=out, layouts=layouts, nslides=len(content.get('slides', [])), backgrounds=bgs,
+        lay_bg[lay.get('objectId')] = col(f) if f else None
+    mast = None
+    for m in mc.get('masters', []):
+        f = m.get('pageProperties', {}).get('pageBackgroundFill', {}).get('solidFill')
+        mast = mast or (col(f) if f else None)
+    use = Counter(sl.get('slideProperties', {}).get('layoutObjectId') for sl in content.get('slides', []))
+    bgmap = {sl['objectId']: sl for sl in (bg_json or {}).get('content', bg_json or {}).get('slides', [])}
+    bgs, pic_bg, slide_bg = [], 0, []
+    for sl in content.get('slides', []):
+        b = bgmap.get(sl['objectId'], {})
+        fill = b.get('pageProperties', {}).get('pageBackgroundFill', {})
+        if 'solidFill' in fill:
+            slide_bg.append(col(fill['solidFill']))
+        elif 'stretchedPictureFill' in fill:
+            pic_bg += 1
+            slide_bg.append(None)
+        else:
+            slide_bg.append(lay_bg.get(sl.get('slideProperties', {}).get('layoutObjectId')) or mast)
+    bgs = [b for b in slide_bg if b]
+    return dict(slide_bg=slide_bg, layout_use=dict(use), picture_backgrounds=pic_bg, elements=out, layouts=layouts, nslides=len(content.get('slides', [])), backgrounds=bgs,
                 theme=scheme, canvas=(W, page_h(content, scale)))
 
 
@@ -257,8 +276,7 @@ def from_pptx(path):
     for si, s in enumerate(prs.slides):
         walk(s.shapes, si)
         m_bg = re.search(r'<p:bg>.*?<a:srgbClr val="([0-9A-Fa-f]{6})"', s._element.xml, re.S)
-        if m_bg:
-            bgs.append('#' + m_bg.group(1).upper())
+        bgs.append('#' + m_bg.group(1).upper() if m_bg else None)
     layouts = []
     for lay in prs.slide_layouts:
         items = []
@@ -268,13 +286,22 @@ def from_pptx(path):
             items.append(dict(ph=str(sh.placeholder_format.type).split('.')[-1].split(' ')[0],
                               x=sh.left * scale, y=sh.top * scale, w=sh.width * scale, h=sh.height * scale))
         layouts.append(dict(name=lay.name, master=None, items=items))
-    return dict(elements=out, layouts=layouts, nslides=len(prs.slides), theme={}, backgrounds=bgs,
+    return dict(elements=out, layouts=layouts, nslides=len(prs.slides), theme={}, backgrounds=[b for b in bgs if b], slide_bg=bgs,
                 canvas=(W, prs.slide_height * scale))
 
 
 # --------------------------------------------------------------------------
 # derivations
 # --------------------------------------------------------------------------
+def contrast_ratio(a, b):
+    def L(h):
+        f = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        r, g, bl = [f(int(h[i:i + 2], 16) / 255) for i in (1, 3, 5)]
+        return 0.2126 * r + 0.7152 * g + 0.0722 * bl
+    hi, lo = max(L(a), L(b)), min(L(a), L(b))
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def _lum(h):
     r, g, b = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
@@ -310,13 +337,31 @@ def derive_colours(model, merge=10):
         return out
 
     bg = Counter(model.get('backgrounds', []))
+    # one theme per common background: its paper and the text colour used on those slides
+    sbg = model.get('slide_bg') or []
+    per_bg = defaultdict(Counter)
+    for e in model['elements']:
+        b = sbg[e['slide']] if e['slide'] < len(sbg) else None
+        if b:
+            for r in e['runs']:
+                if r['color']:
+                    per_bg[b][r['color']] += r['n']
+    themes = []
+    for b, n in bg.most_common(3):
+        if n >= 0.15 * max(1, sum(bg.values())) and per_bg[b]:
+            tot_b = sum(per_bg[b].values())
+            strong = [(c, k) for c, k in per_bg[b].items() if k >= 0.10 * tot_b] or list(per_bg[b].items())
+            ink = max(strong, key=lambda kv: contrast_ratio(kv[0], b))[0]   # the most legible of the colours that carry real text
+            themes.append(dict(paper=b, ink=ink, slides=n, id='dark' if _lum(b) < 0.35 else 'light'))
+    seen_ids = set()
+    themes = [t for t in themes if not (t['id'] in seen_ids or seen_ids.add(t['id']))]
     fills, texts = cluster(area), cluster(chars)
     tot_a = sum(o['n'] for o in fills) or 1
     tot_c = sum(o['n'] for o in texts) or 1
     return dict(
         fills=[dict(hex=o['hex'], share=round(o['n'] / tot_a, 4)) for o in fills[:16]],
         text=[dict(hex=o['hex'], share=round(o['n'] / tot_c, 4)) for o in texts[:10]],
-        backgrounds=[dict(hex=h, n=n) for h, n in bg.most_common(4)],
+        backgrounds=[dict(hex=h, n=n) for h, n in bg.most_common(4)], themes=themes,
     )
 
 
@@ -326,21 +371,23 @@ def name_colours(cols):
     fills = cols['fills']
     text = cols['text']
     roles = {}
-    # ink = darkest text colour that carries >=10% of characters; mute = next most used
     dark = sorted([t for t in text if t['share'] >= 0.10], key=lambda t: _lum(t['hex']))
-    if dark:
-        roles['ink'] = dark[0]['hex']
-    elif text:
-        roles['ink'] = text[0]['hex']
-    rest = [t for t in text if t['hex'] != roles.get('ink')]
+    if cols.get('themes'):
+        roles['paper'] = cols['themes'][0]['paper']
+        roles['ink'] = cols['themes'][0]['ink']
+    else:
+        # ink = darkest text colour that carries >=10% of characters
+        roles['ink'] = dark[0]['hex'] if dark else (text[0]['hex'] if text else '#000000')
+        if cols.get('backgrounds'):
+            roles['paper'] = cols['backgrounds'][0]['hex']
+        else:
+            light = [f for f in fills if _lum(f['hex']) > 0.85]
+            if light:
+                roles['paper'] = light[0]['hex']
+    # mute = the most used text colour that is not ink and has a visibly different lightness
+    rest = [t for t in text if t['hex'] != roles['ink'] and abs(_lum(t['hex']) - _lum(roles['ink'])) > 0.2]
     if rest:
         roles['mute'] = rest[0]['hex']
-    if cols.get('backgrounds'):
-        roles['paper'] = cols['backgrounds'][0]['hex']
-    else:
-        light = [f for f in fills if _lum(f['hex']) > 0.85]
-        if light:
-            roles['paper'] = light[0]['hex']
     n = 0
     seen = set(roles.values())
     surf = [f for f in fills if _lum(f['hex']) > 0.97 and f['hex'] not in seen]
@@ -465,6 +512,8 @@ def detect_guides(model, tol=2):
                 continue
             w = sum(e['w'] for e in g) / len(g)
             p = sum(pitch) / len(pitch)
+            if p - w < 0 or len(g) > 16 or g[0]['x'] < 0 or cw - (g[-1]['x'] + w) < 0:
+                continue  # overlapping or off-canvas strips are photos or bars, not guides
             cand = dict(columns=len(g), gutter=round(p - w, 2), column_width=round(w, 2),
                         margin_left=round(g[0]['x'], 2), margin_right=round(cw - (g[-1]['x'] + w), 2),
                         source='drawn guide stripes')
@@ -547,7 +596,10 @@ def derive_grid(model):
     # vertical: top margin & baseline rhythm from text tops
     tops = Counter(round(e['y'] / 2) * 2 for e in els if e['kind'] == 'text')
     # the template's own placeholders state the margins outright
-    ph = [i for lay in model['layouts'] for i in lay['items'] if i.get('ph') in ('TITLE', 'BODY', 'CENTERED_TITLE', 'SUBTITLE') and i['w'] > 0.3 * cw]
+    use = model.get('layout_use')
+    n_sl = max(1, model['nslides'])
+    ph = [i for lay in model['layouts'] if not use or use.get(lay.get('id'), 0) >= 0.2 * n_sl
+          for i in lay['items'] if i.get('ph') in ('TITLE', 'BODY', 'CENTERED_TITLE', 'SUBTITLE') and i['w'] > 0.3 * cw]
     tmpl = None
     if ph:
         tl = Counter(round(i['x']) for i in ph).most_common(1)[0][0]
@@ -677,28 +729,30 @@ def snap_type(t, grid_base=None):
         return {}
     base = t['base_px'] or sizes[-1]
     names = {}
-    big = [s for s in sizes if s > base * 1.15]
-    small = [s for s in sizes if s < base * 0.87]
+    big = sorted([s for s in sizes if s > base * 1.15], reverse=True)
+    if len(big) > 5:   # keep the largest and smallest and spread the rest, so a 240px title is not lost
+        idx = sorted({round(i * (len(big) - 1) / 4) for i in range(5)})
+        big = [big[i] for i in idx]
     names['body'] = base
-    heads = ['h3', 'h2', 'h1', 'display', 'display-xl']
-    for nm, s in zip(heads, sorted(big)):
+    for nm, s in zip(['display-xl', 'display', 'h1', 'h2', 'h3'][:len(big)], big):
         names[nm] = s
+    small = [s for s in sizes if s < base * 0.87]
     for nm, s in zip(['caption', 'micro', 'nano'], sorted(small, reverse=True)):
         names[nm] = s
     return names
 
 
 def _ordered_families(t):
-    """display = family of the largest measured size, body = family of the base size."""
+    """[display, body, extras...]: display = family of the largest size, body = family of the base size
+    (the same family twice when the deck uses one face for both)."""
     sizes = t['sizes']
-    order = []
-    if sizes:
-        order += sizes[0]['fonts'][:1] + [f for f in next((s['fonts'] for s in sizes if s['px'] == t['base_px']), [])][:1]
-    order += [f['font'] for f in t['families'] if f['font']]
-    out = []
-    for f in order:
-        if f and f not in out:
-            out.append(f)
+    allf = [f['font'] for f in t['families'] if f['font']]
+    disp = sizes[0]['fonts'][0] if sizes and sizes[0]['fonts'] else (allf[0] if allf else None)
+    body_fonts = next((s['fonts'] for s in sizes if s['px'] == t['base_px']), [])
+    # the base size's most-used family, not the alphabetically first
+    body = next((f for f in allf if f in body_fonts), disp)
+    out = [f for f in (disp, body) if f]
+    out += [f for f in allf if f not in out]
     return out
 
 
@@ -825,7 +879,11 @@ def to_claude_ds(d, name='derived', source=None):
     fams = t['type']['families'] or ['system-ui']
     keys = ['display', 'body'] + ['extra%d' % i for i in range(1, 10)]
     families = {keys[i]: '"%s", system-ui, sans-serif' % f for i, f in enumerate(fams[:12])}
-    famkey = {f: keys[i] for i, f in enumerate(fams[:12])}
+    famkey = {}
+    for i, f in enumerate(fams[:12]):
+        famkey.setdefault(f, keys[i])
+    if len(fams) > 1 and fams[0] == fams[1]:
+        famkey['__body__'] = 'body'
     wmap = {}
     for w in ty.get('weights', []):
         wmap.setdefault(w['font'], []).append(w)
@@ -835,7 +893,8 @@ def to_claude_ds(d, name='derived', source=None):
         s = sizes.get(px)
         fam = (s['fonts'][0] if s and s['fonts'] else fams[0])
         weight = 700 if (s and s['bold_share'] >= 0.5) else 400
-        styles_by_fam[famkey.get(fam, 'body')].append(
+        key = 'body' if (len(fams) > 1 and fam == fams[1] and px <= (ty['base_px'] or 0)) else famkey.get(fam, 'body')
+        styles_by_fam[key].append(
             {'name': nm, 'fontSize': '%gpx' % round(px, 1), 'fontWeight': weight,
              'usage': 'Measured: %.1f%% of characters in the source use this size.' % ((s['share'] if s else 0) * 100)})
     groups = []
@@ -846,8 +905,21 @@ def to_claude_ds(d, name='derived', source=None):
     for k, sty in styles_by_fam.items():
         if k not in ('display', 'body'):
             groups.append({'name': k.title(), 'family': k, 'styles': sty})
+    th = d['colour'].get('themes', [])
+    if len(th) > 1:
+        tid = [t['id'] for t in th]
+        for c in cols:
+            if c['name'] in ('paper', 'ink'):
+                c['value'] = {t['id']: t[c['name']].lower() for t in th}
+        themes = [{'id': t['id'], 'name': t['id'].title()} for t in th]
+        # surface and mute are first-theme values; later themes inherit them, so give dark themes their own
+        for c in cols:
+            if c['name'] == 'surface':
+                c['value'] = {t['id']: (c['value'] if _lum(t['paper']) > 0.35 else t['paper'].lower()) for t in th}
+    else:
+        themes = [{'id': 'light', 'name': 'Light'}]
     out = {'name': name, 'version': 1,
-           'color': {'themes': [{'id': 'light', 'name': 'Light'}], 'tokens': cols},
+           'color': {'themes': themes, 'tokens': cols},
            'type': {'fonts': [], 'families': families, 'groups': groups[:12]}}
     u = t['spacing']['unit_px']
     if u:
