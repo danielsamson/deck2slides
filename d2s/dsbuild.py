@@ -384,7 +384,49 @@ def structural_files(res, tk):
     return out
 
 
-def build(model, d, name, outdir, tagline=None, fetch=True, structural=None):
+def layout_files(res, slides_json, masters_json, tk):
+    """One preview + README per layout in the verified catalogue, and a Layouts.md summary that states each status."""
+    import re as _re
+    from . import gslides2claude as G
+    hexmap = {}
+    for t in tk['color']['tokens']:
+        v = t['value'][tk['color']['themes'][0]['id']] if isinstance(t['value'], dict) else t['value']
+        hexmap.setdefault(v.lower(), t['name'])
+    tok = lambda s: _re.sub(r'(color|background):([^;"]*?)(#[0-9a-fA-F]{6})', lambda m: '%s:%svar(--%s,%s)' % (m.group(1), m.group(2), hexmap[m.group(3).lower()], m.group(3)) if m.group(3).lower() in hexmap else m.group(0), s)
+    import tempfile
+    work = tempfile.mkdtemp()
+    ex = {max(e['variants'], key=lambda v: v['n'])['exemplar'] - 1 for e in res if e['variants']}
+    G.convert(slides_json, masters_json, work, only=ex)
+    out, lines = {}, ['# Layouts', '', 'Slide layouts proposed from the deck and checked against its slides. **Verified** means at least 75% of the slides a layout claims sit in families of three or more that match its recipe; **partly verified** and **unverified** say how little held up. Previews use the exemplar slide; pictures are placeholders.', '',
+                      '| Layout | Status | Slides claimed | In verified families |', '| --- | --- | --- | --- |']
+    for e in res:
+        nm = 'Layout' + ''.join(w[:1].upper() + w[1:] for w in e['name'].split())
+        lines.append('| %s | %s | %d | %d%% |' % (e['name'], e['status'], e['claimed'], round(e['coverage'] * 100)))
+        if not e['variants']:
+            continue
+        best = max(e['variants'], key=lambda v: v['n'])
+        sec = open('%s/project/slides/s%03d.html' % (work, best['exemplar'])).read()
+        sec = _re.sub(r'<img src="IMG:\d+"', '<img data-missing', sec)
+        out['components/%s/preview.html' % nm] = '<!-- @dsCard group="Layouts" height=1080 width=1920 subtitle="%s" -->\n<style>body{margin:0}section{position:relative;width:1920px;height:1080px;overflow:hidden}</style>\n%s\n' % (e['status'], tok(sec))
+        rec = best['recipe']
+        L = ['%s: %s' % (e['name'], e['usage']), '', '**Status: %s.** %s.' % (e['status'], e['provenance']), '']
+        L.append('Variants checked: ' + '; '.join('%s (exemplar slide %d, %d slides, mean slot match %.2f, %s)' % (v['label'], v['exemplar'], v['n'], v['mean'], v['status']) for v in e['variants']) + '.')
+        if e['outliers']:
+            L.append('\nClaimed but not matching any family: slides %s.' % ', '.join(map(str, e['outliers'])))
+        if e['weak_discriminator']:
+            L.append('\nCaution: the recipe also matches many slides outside this layout, so it describes a pattern (little on the slide, one idea) more than a layout.')
+        L += ['', 'Slots of the exemplar:', '']
+        for s in rec:
+            if s['klass'] == 'text':
+                L.append('- **%s** at x %d, y %d, width %d (%gpx, weight %s, %s): e.g. "%s"' % (s['role'], s['x'], s['y'], s['w'], s['px'], s['weight'], s['colour'], s['text'][:50]))
+            else:
+                L.append('- %s at x %d, y %d, %dx%d' % (s['role'], s['x'], s['y'], s['w'], s['h']))
+        out['components/%s/README.md' % nm] = '\n'.join(L) + '\n'
+    out['Layouts.md'] = '\n'.join(lines) + '\n'
+    return out
+
+
+def build(model, d, name, outdir, tagline=None, fetch=True, structural=None, layouts=None):
     cache = os.path.join(outdir, '.fontcache')
     proj = os.path.join(outdir, PROJECT)
     import shutil
@@ -409,6 +451,8 @@ def build(model, d, name, outdir, tagline=None, fetch=True, structural=None):
            'README.md': readme(d, tk, comps, fails, missing, name)}
     out.update(cfiles)
     out.update(extra)
+    if layouts:
+        out.update(layouts)
     for rel, text in out.items():
         p = os.path.join(proj, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)

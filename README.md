@@ -352,3 +352,15 @@ Runs on the **full** Slides JSON (`--full slides_full.json`, from `presentations
 6. Preview from the first instance through `gslides2claude`, colours turned into token variables where a token matches. Output: `components/<Name>/preview.html` and `README.md`, a `Layouts.md` section (slides grouped by background, pictures, headline size, text blocks and components), and `components.json`, `components-sheet.html` for judging by eye.
 
 Result on deck B (150 slides): 7 components (Stat x2, Heading and text x2, Name and role, Avatar, Swatch) from 141 clusters, 48 of which grouped; 14 layout groups of at least three slides. Limits seen: it finds small recurring blocks well and does not find larger composites (a timeline row with its bar and legend differs too much between instances); a component that recurs on only one slide is listed as such; instance order inside a cluster is by position, so a reordered variant becomes a separate component; images are placeholders (unreachable here); the Slides API gives no group semantics beyond `elementGroup`, so designer-made groups are flattened, not respected. Not done: using Slides *layouts* (the template's placeholders) as component evidence, and a similarity threshold learned from data.
+
+### Layout catalogue: derive, propose, verify (`d2s/layouts.py`, `--catalogue`)
+
+The split agreed after the component work: derive the structure, fill in the meaning, then check the result against the deck.
+
+1. **Derive.** Slides are grouped by what they contain; each group's exemplar is its medoid slide, turned into a recipe of slots (role, size, colour, position).
+2. **Propose.** `examples/tokens/deckb/layout-catalogue.json` holds names, usage lines and merges written by Claude from looking at the exemplars. Its slide lists are copied from the derived groups, not typed (an earlier draft had hand-typed numbers that were wrong; the verifier exposed it).
+3. **Verify.** Each proposal is scored against its slides (share of recipe slots found, position tolerance 7% of the canvas), against slides it should not match (false positives), and split into sub-families that really agree; a layout is **verified** only if at least 75% of the slides it claims sit in agreeing families of three or more. A family of two is a pair, not evidence.
+
+deck B result (12 proposed layouts): verified Section title (12/12 slides), Contents list (9/9), Statement (13/13, but weak: its recipe also matches 8 to 11 slides outside it, so it describes a sparse slide more than a layout); partly verified Lettered item (12 of 26), Phase columns (3 of 7); pairs only for Photo with caption, Table, Quote and Process step; unverified Big number, Locations, Checklist (their claimed slides differ too much in geometry). A strict direct clustering of all 150 slides at 0.85 agreement finds only 5 families covering 42 slides, so most of this deck's layouts are variations rather than repeats.
+
+Output per layout in the Design System: a full-slide preview (group "Layouts"), a README with status, provenance, variants, outliers and slots, and `Layouts.md` summarising every status. `layout-catalogue-verified.json` keeps the scores.

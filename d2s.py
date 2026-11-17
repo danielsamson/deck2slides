@@ -85,8 +85,16 @@ def tokens_cmd(a):
         json.dump({k: v for k, v in structural.items() if k != 'components'} | {'components': [{k: v for k, v in c.items() if k != 'preview_body'} for c in structural['components']]},
                   open(os.path.join(a.out, 'components.json'), 'w'), indent=1, default=str)
         open(os.path.join(a.out, 'components-sheet.html'), 'w').write(componentsheet.sheet(structural))
+    lay_files = None
+    if a.catalogue and a.full:
+        from d2s import layouts as LY
+        data_, descs_, chrome_, _g = LY.derive(a.full, a.masters)
+        cat_ = LY.build_catalogue(json.load(open(a.catalogue)), descs_, chrome_)
+        json.dump(cat_, open(os.path.join(a.out, 'layout-catalogue-verified.json'), 'w'), indent=1, default=str)
+        ds_tokens = tokens.to_claude_ds(d, name)
+        lay_files = dsbuild.layout_files(cat_, a.full, a.masters, ds_tokens)
     if a.build:
-        rep = dsbuild.build(model, d, name, os.path.join(a.out, 'system'), a.tagline, fetch=not a.no_fonts, structural=structural)
+        rep = dsbuild.build(model, d, name, os.path.join(a.out, 'system'), a.tagline, fetch=not a.no_fonts, structural=structural, layouts=lay_files)
         json.dump(rep, open(os.path.join(a.out, 'build-report.json'), 'w'), indent=1)
         print('design system tree:', os.path.join(a.out, 'system', 'project'))
         print(json.dumps({k: v for k, v in rep.items() if k != 'files'}, indent=1))
@@ -116,6 +124,6 @@ c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
-c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
+c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)
