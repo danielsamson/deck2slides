@@ -86,6 +86,36 @@ Most gaps disappear if the deck is written with the export in mind:
 6. With a company template: tag titles, subtitles and body text with `data-role`, set `data-layout` on each slide, and keep decorative shapes untagged.
 7. Total picture weight: about 2.7 MB of images fits in the uploaded file; beyond that pictures fall back to the second step (no opacity or clip fit), GIFs always do.
 
+## The five-page test piece (same deck in three apps)
+
+`test-decks/five-page/` is a complete Claude Slides-artifact deck made for this: title page, grid and principles, image and text split, type and colour system, closing page.
+Its system: 1920 x 1080, **12 columns of 118 px, 24 px gutters, 120 px margins, 8 px baseline**; Bricolage Grotesque for display and headings, Inter for text, scale 160 / 96 / 56 / 36 / 28 / 20 px;
+public-domain NASA pictures from Wikimedia Commons (credits in `assets/CREDITS.md`); native gradients, rounded and circular picture masks, shadows. Every coordinate comes from the grid constants in `generate.py`.
+
+```
+python3 test-decks/five-page/generate.py
+python3 d2s.py convert test-decks/five-page test-decks/scratch/five --calibration <calibration.json>
+# upload deck.pptx to Drive (converts to Google Slides); thumbnails of each slide; compare with the browser render
+```
+
+Result (`examples/five-page/compare.png`, the PPTX and the PDF are in `examples/five-page/`): pixel difference browser vs Google Slides
+**1.21 / 0.96 / 0.09 / 0.49 / 0.11 %** for slides 1-5, 0 text blocks more than 4 px off, 3 pictures embedded (the PPTX is 1.05 MB). To the eye the three renders are identical.
+The third column is **LibreOffice rendering the same PPTX, not PowerPoint** (browser vs LibreOffice 0.79 / 0.85 / 1.52 / 1.07 / 1.01 %): it shows the file is well-formed and the shapes, masks, gradients and fonts are
+read by a second consumer, but it is not proof of how PowerPoint draws it. **To close that gap, open `examples/five-page/five-page.pptx` in PowerPoint** (install Inter and Bricolage Grotesque first, fonts are not embedded).
+
+## The other direction (Google Slides to PowerPoint or Claude Slides)
+
+Not built or tested in this project. What is known:
+- **Google Slides to PowerPoint:** File > Download > Microsoft PowerPoint (.pptx), or Drive `download_file_content` with `exportMimeType` `application/vnd.openxmlformats-officedocument.presentationml.presentation`. Google writes its own PPTX, so shapes, gradients, crops, shadows and text come back as Google understands them; fonts are not embedded, so PowerPoint substitutes any font that is not installed. How much survives the round trip was **not measured**.
+- **PowerPoint to Google Slides:** upload with conversion (what this tool does).
+- **Google Slides or PowerPoint to Claude Slides:** no converter exists. A Claude Slides deck is HTML (`deck.json`, `deck.css`, `slides/*.html`). A `slides2html` could read the Slides API JSON (`read_presentation`: position, size, fills, text runs, picture URLs) or a PPTX (python-pptx, already used here) and write absolutely positioned elements. That would be mostly mechanical for text, shapes and pictures, and would give positioned boxes, not a semantic layout (no CSS grid or flow). Feasible, not started.
+
+## Guides and grids
+
+- **The grid is geometry, not metadata.** In the Claude deck the 12-column grid is just where things sit. The export keeps positions to well under a pixel (rule 1, `five-page`), so a grid-aligned deck stays grid-aligned in Google Slides and PowerPoint. The five-page deck also draws its columns as ordinary shapes on slide 2 so the grid is visible.
+- **Guides (the draggable lines) are not carried over.** HTML has no guides; the Slides API does not expose them; PowerPoint stores them as a file extension (`p15:sldGuideLst`, per slide or in the master). This tool writes none. Writing them blind was left out on purpose: a malformed extension can make PowerPoint ask to repair the file, and neither app was available to check one. If you want them, the safe route is to put guides into the **company template's master** (see 'Using a company template'), where they are then inherited by every slide.
+- **Layout grids in a template** (columns, margins) work the same way: they live in the master and layouts, which the template route keeps intact.
+
 ## Ways of working (pick one per deck)
 
 What each route gives you, and what was tested. "Tested" means run end to end in the last session; everything else is stated as untested.

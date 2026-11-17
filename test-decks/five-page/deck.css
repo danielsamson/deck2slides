@@ -1,0 +1,9 @@
+*{box-sizing:border-box;margin:0}
+section{background:#F5F2EA;color:#14142E;font-family:'Inter',Arial,sans-serif;padding:0;display:block}
+.eyebrow{font:600 18px/24px Inter;letter-spacing:4px;text-transform:uppercase}
+.display{font:800 160px/148px 'Bricolage Grotesque';letter-spacing:-4px}
+.h1{font:700 96px/96px 'Bricolage Grotesque';letter-spacing:-2px}
+.h2{font:700 56px/64px 'Bricolage Grotesque';letter-spacing:-1px}
+.h3{font:600 36px/44px Inter}
+.body{font:400 28px/40px Inter}
+.cap{font:500 20px/28px Inter;color:#5B5F73}
