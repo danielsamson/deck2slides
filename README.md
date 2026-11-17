@@ -126,6 +126,18 @@ keeps exact geometry, fills, crops and fonts) or the Slides API JSON and write a
 - **Guides (the draggable lines) are not carried over.** HTML has no guides; the Slides API does not expose them; PowerPoint stores them as a file extension (`p15:sldGuideLst`, per slide or in the master). This tool writes none. Writing them blind was left out on purpose: a malformed extension can make PowerPoint ask to repair the file, and neither app was available to check one. If you want them, the safe route is to put guides into the **company template's master** (see 'Using a company template'), where they are then inherited by every slide.
 - **Layout grids in a template** (columns, margins) work the same way: they live in the master and layouts, which the template route keeps intact.
 
+## What the Claude Slides format actually is (read from the Slides artifact type's own instructions)
+
+It is a **specific, versioned dialect of HTML, not generic HTML, and not an open standard** (it belongs to Claude's Slides artifact type; no W3C/ECMA spec). Facts from the type's `SKILL.md`:
+- Files: `project/deck.json` (index: `v:5`, `order`, `sections`, `faces` (at most 4 Google Fonts or uploaded faces), `format`, optional `size:"4:3"` = 1440 x 1080), `project/deck.css` (shared rules and `--variables`, no `@import`), and **one file per slide `project/slides/<id>.html` containing exactly one `<section id="<id>">`**, no `html`, `head`, `style`, `link` or `body`. Speaker notes are one `<aside>` as the section's last child.
+- Canvas: fixed 1920 x 1080 px, `padding:128px` margins; children flow (flex, grid, column), `position:absolute` pins a child.
+- Element set: `h1-h3`, `p` (font-size not under 24 px), `ul/ol/li`, `br`, `b i u a span`, `div`, `img` (width and height set), `table/tr/th/td`, `svg` (52 KB max), `hr`, `x-shape` (kinds rect, rounded, ellipse, diamond, arrows, line), `x-icon`, `x-connector`, pinned `x-embed` (sandboxed live page).
+- Limits: at most 200 elements per slide; a `div` with more than 24 absolutely positioned children disappears; images must be `/_blob/<id>` (uploaded) or a design-system path, never a relative path, `data:` or http(s) URL.
+- Motion: CSS `@keyframes`, `fragment` click steps, `data-transition`.
+- The viewer ships its own exporter (`export.js` in its file list); how its PPTX compares with this tool's was **not tested**.
+
+**Consequences for this project:** (1) the extractor reads computed layout, so flow layouts, flex and grid in real Claude decks are handled; the 28-slide pitch deck is a real Claude deck and converts with no warnings. (2) **`test-decks/features` and `test-decks/five-page` are not strictly in this format** (relative image paths, text in `div`s instead of `h1`/`p`, captions under 24 px, no `format` key, more than 24 absolute children in some containers). (3) So the "Claude Slides" column in `examples/five-page/compare.png` is **this repo's headless Chromium rendering that HTML, not the real Claude Slides viewer**. (4) Not yet tested through the extractor: `table`, `ul/ol` bullets, `x-connector`, `x-shape` kinds other than ellipse, `x-embed`, `fragment` steps. A reverse converter (Slides/PowerPoint to Claude Slides) has to emit this dialect, including uploading images and staying inside the element and count limits.
+
 ## Ways of working (pick one per deck)
 
 What each route gives you, and what was tested. "Tested" means run end to end in the last session; everything else is stated as untested.
