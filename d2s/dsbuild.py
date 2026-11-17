@@ -358,16 +358,28 @@ def structural_files(res, tk):
     def tokenise(body):
         return _re.sub(r'(color|background|border-top|border):([^;"]*?)(#[0-9a-fA-F]{6})', lambda m: '%s:%svar(--%s,%s)' % (m.group(1), m.group(2), hexmap[m.group(3).lower()], m.group(3)) if m.group(3).lower() in hexmap else m.group(0), body)
     out = {}
-    for c in res['components']:
+    for c in list(res['components']) + list(res.get('atoms', [])):
         w, h = c['size']
-        nm = ''.join(w[:1].upper() + w[1:] for w in c['name'].split())   # components/<Comp> must be an ASCII identifier
+        nm = ''.join(w[:1].upper() + w[1:] for w in c['name'].split())
+        atom = c.get('kind') == 'atom'   # components/<Comp> must be an ASCII identifier
         bg = c.get('bg', '#ffffff')
         bgv = 'var(--%s,%s)' % (hexmap[bg.lower()], bg) if bg.lower() in hexmap else bg
         out['components/%s/preview.html' % nm] = (
-            '<!-- @dsCard group="Blocks" height=%d width=%d subtitle="%d instances on %d slides" -->\n<style>body{margin:0;padding:24px;background:%s}'
+            '<!-- @dsCard group="%s" height=%d width=%d subtitle="%d instances on %d slides" -->\n<style>body{margin:0;padding:24px;background:%s}'
             '.stage{position:relative;width:%dpx;height:%dpx}</style>\n<div class="stage">\n%s\n</div>\n' % (
-                min(h + 48, 900), w + 48, c['instances'], c['n_slides'], bgv, w, h, tokenise(c['preview_body'])))
+                'Atoms' if atom else 'Content blocks', min(h + 48, 900), w + 48, c['instances'], c['n_slides'], bgv, w, h, tokenise(c['preview_body'])))
         sl = c['slots']
+        if atom:
+            pl = c['places'][0]
+            lines = ['%s is a single element, %dx%d px, used %d times on %d slides of the source%s.' % (
+                c['name'], w, h, c['instances'], c['n_slides'], (', in the same place %d%% of the time (about x %d, y %d)' % (round(c['consistent'] * 100), pl['x'], pl['y'])) if c['consistent'] >= 0.5 else ' in several places'), '']
+            for s in sl:
+                lines.append('- Style: %gpx, weight %s, %s. %s' % (s['px'], s['weight'], s['colour'], ('Text is fixed: "%s".' % s['examples'][0][:50]) if s['fixed'] and s['examples'] else 'The consumer provides the text, e.g. %s.' % ', '.join('"%s"' % e[:30] for e in s['examples'])))
+            if len(c['places']) > 1:
+                lines.append('- Placements seen: ' + '; '.join('x %d, y %d (%d times)' % (p['x'], p['y'], p['n']) for p in c['places'][:4]) + '.')
+            lines += ['', '- Do: use it where the layouts put it.', '- Do not: restyle it or move it off the grid.']
+            out['components/%s/README.md' % nm] = '\n'.join(lines) + '\n'
+            continue
         lines = ['%s is a %dx%d px block with %d member%s, found %d times on %d slide%s of the source.' % (
             c['name'], w, h, c['members'], '' if c['members'] == 1 else 's', c['instances'], c['n_slides'], '' if c['n_slides'] == 1 else 's'), '']
         if sl:
@@ -399,9 +411,9 @@ def layout_files(res, slides_json, masters_json, tk, comps=None):
     G.convert(slides_json, masters_json, work, only=ex)
     out = {}
     L = ['# Layouts', '',
-         'A layout is a whole-slide template: where things go and which components fill it. It is not a component. Each was proposed by Claude from the deck\'s exemplar slides and checked against the slides it claims. '
+         'A layout is a whole-slide template: where things go and which atoms and content blocks fill it. It is not a component. Each was proposed by Claude from the deck\'s exemplar slides and checked against the slides it claims. '
          '**Verified** means at least 75% of the claimed slides sit in families of three or more that match its recipe; **partly verified** and **unverified** say how little held up. Previews are showcase pages built from an exemplar slide, with placeholder pictures.', '',
-         '| Layout | Status | Slides claimed | In verified families | Components used |', '| --- | --- | --- | --- | --- |']
+         '| Layout | Status | Slides claimed | In verified families | Atoms | Content blocks |', '| --- | --- | --- | --- | --- | --- |']
     detail = []
     for e in res:
         used = []
@@ -410,7 +422,12 @@ def layout_files(res, slides_json, masters_json, tk, comps=None):
                 if v['exemplar'] in c.get('all_slides', []) and c['name'] not in used:
                     used.append(c['name'])
         lname = ''.join(w[:1].upper() + w[1:] for w in e['name'].split())
-        L.append('| %s | %s | %d | %d%% | %s |' % (e['name'], e['status'], e['claimed'], round(e['coverage'] * 100), ', '.join(used) or 'none'))
+        bv = max(e['variants'], key=lambda v: v['n']) if e['variants'] else None
+        an = []
+        for a in (bv or {}).get('composition', {}).get('atoms', []):
+            if a['atom'] not in an:
+                an.append(a['atom'])
+        L.append('| %s | %s | %d | %d%% | %s | %s |' % (e['name'], e['status'], e['claimed'], round(e['coverage'] * 100), ', '.join(an) or 'none', ', '.join(used) or 'none'))
         if not e['variants']:
             detail.append('## %s\n\n%s\n\n**Status: %s.** %s. No agreeing family of slides was found, so there is no preview.\n\nClaimed slides: %s.\n' % (e['name'], e['usage'], e['status'], e['provenance'], ', '.join(map(str, e['outliers']))))
             continue
@@ -419,9 +436,22 @@ def layout_files(res, slides_json, masters_json, tk, comps=None):
         sec = _re.sub(r'<img src="IMG:\d+"', '<img data-missing', sec)
         out['components/Layout%s/preview.html' % lname] = '<!-- @dsCard group="Layouts" page height=1080 width=1920 subtitle="%s" -->\n<style>body{margin:0}section{position:relative;width:1920px;height:1080px;overflow:hidden}</style>\n%s\n' % (e['status'], tok(sec))
         d = ['## %s' % e['name'], '', e['usage'], '', '**Status: %s.** %s.' % (e['status'], e['provenance']), '']
+        comp = best.get('composition', {})
+        at, fr = comp.get('atoms', []), comp.get('free', [])
+        if at or fr:
+            names = []
+            for a in at:
+                if a['atom'] not in names:
+                    names.append(a['atom'])
+            d.append('**Composition.** Atoms: %s. Free content: %s. %d of %d elements are atoms.' % (
+                ', '.join(names) or 'none', '; '.join('%s at x %d, y %d' % (f['role'], f['x'], f['y']) for f in fr[:8]) or 'none', len(at), len(at) + len(fr)))
+            off = [a['atom'] for a in at if not a['usual']]
+            if off:
+                d.append('Off their usual place on the exemplar: %s.' % ', '.join(sorted(set(off))))
+            d.append('')
         if used:
-            d.append('Components used: %s.' % ', '.join(used))
-        d.append('Variants checked: ' + '; '.join('%s (exemplar slide %d, %d slides, mean slot match %.2f, %s)' % (v['label'], v['exemplar'], v['n'], v['mean'], v['status']) for v in e['variants']) + '.')
+            d.append('Content blocks used: %s.' % ', '.join(used))
+        d.append('Variants checked: ' + '; '.join('%s (exemplar slide %d, %d slides, mean slot match %.2f, same atoms %d%%, %s)' % (v['label'], v['exemplar'], v['n'], v['mean'], round(v.get('comp_agree', 0) * 100), v['status']) for v in e['variants']) + '.')
         if e['outliers']:
             d.append('\nClaimed but not matching any family: slides %s.' % ', '.join(map(str, e['outliers'])))
         if e['weak_discriminator']:

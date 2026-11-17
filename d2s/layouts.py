@@ -143,7 +143,7 @@ def refine(slides, descs, chrome, thr=0.7, min_size=2):
     return out, sorted(j + 1 for j in left)
 
 
-def build_catalogue(catalogue, descs, chrome):
+def build_catalogue(catalogue, descs, chrome, atoms=None):
     """Verify every proposal; split variants that do not hold together; report outliers and look-alikes."""
     res = []
     for e in catalogue['layouts']:
@@ -153,7 +153,13 @@ def build_catalogue(catalogue, descs, chrome):
             outliers += out
             for k, s in enumerate(subs):
                 r = verify(dict(name=e['name'], slides=s['slides'], exemplar=s['exemplar']), descs, chrome)
-                variants.append(dict(label=v['label'] + ('' if len(subs) == 1 else ' %d' % (k + 1)), exemplar=s['exemplar'],
+                comp = C.composition(descs[s['exemplar'] - 1], atoms, chrome) if atoms else ([], [])
+                ex_set = {a['atom'] for a in comp[0]}
+                jac = []
+                for sn in s['slides']:
+                    st = {a['atom'] for a in C.composition(descs[sn - 1], atoms, chrome)[0]} if atoms else set()
+                    jac.append(len(st & ex_set) / max(1, len(st | ex_set)))
+                variants.append(dict(comp_agree=round(sum(jac) / max(1, len(jac)), 2), composition=dict(atoms=comp[0], free=comp[1]), label=v['label'] + ('' if len(subs) == 1 else ' %d' % (k + 1)), exemplar=s['exemplar'],
                                      slides=s['slides'], mean=r['mean'], full=r['full'], n=r['n'], false_positives=r['false_positives'],
                                      n_false=r['n_false'], status=r['status'], recipe=r['recipe']))
         claimed = sum(len(v['slides']) for v in e['variants'])

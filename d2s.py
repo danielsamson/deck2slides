@@ -82,14 +82,14 @@ def tokens_cmd(a):
     structural = None
     if a.full:
         structural = components.extract(a.full, a.masters)
-        json.dump({k: v for k, v in structural.items() if k != 'components'} | {'components': [{k: v for k, v in c.items() if k != 'preview_body'} for c in structural['components']]},
+        json.dump({k: v for k, v in structural.items() if k not in ('components', 'atoms')} | {'components': [{k: v for k, v in c.items() if k != 'preview_body'} for c in structural['components']], 'atoms': [{k: v for k, v in c.items() if k not in ('preview_body', 'key')} for c in structural['atoms']]},
                   open(os.path.join(a.out, 'components.json'), 'w'), indent=1, default=str)
         open(os.path.join(a.out, 'components-sheet.html'), 'w').write(componentsheet.sheet(structural))
     lay_files = None
     if a.catalogue and a.full:
         from d2s import layouts as LY
         data_, descs_, chrome_, _g = LY.derive(a.full, a.masters)
-        cat_ = LY.build_catalogue(json.load(open(a.catalogue)), descs_, chrome_)
+        cat_ = LY.build_catalogue(json.load(open(a.catalogue)), descs_, chrome_, (structural or {}).get('atoms'))
         json.dump(cat_, open(os.path.join(a.out, 'layout-catalogue-verified.json'), 'w'), indent=1, default=str)
         ds_tokens = tokens.to_claude_ds(d, name)
         lay_files = dsbuild.layout_files(cat_, a.full, a.masters, ds_tokens, (structural or {}).get('components'))

@@ -46,3 +46,22 @@ def test_identical_text_on_many_slides_is_chrome_not_a_component():
     json.dump(d, open(p, 'w'))
     r = C.extract(p, None)
     assert r['chrome'] >= 1
+
+
+def test_atoms_are_single_elements_placed_by_convention():
+    from d2s import gslides2claude as G
+    tmp = tempfile.mkdtemp()
+    slides = []
+    for i in range(5):
+        els = [_tb('e%d' % i, 400000, 250000, 1500000, 250000, 'Section %d' % i, 9, 500, (0.7, 0.6, 0.4)),            # same place every time
+               _tb('w%d' % i, 600000 + i * 900000, 2000000 + i * 300000, 2500000, 400000, 'Wandering %d' % i, 14, 400),  # moves around
+               _tb('h%d' % i, 600000, 1200000, 6000000, 700000, 'Headline %d' % i, 40, 700)]
+        slides.append({'objectId': 's%d' % i, 'pageProperties': {}, 'pageElements': els})
+    p = os.path.join(tmp, 's.json')
+    json.dump({'content': {'slides': slides}}, open(p, 'w'))
+    r = C.extract(p, None)
+    names = [a['name'] for a in r['atoms']]
+    assert 'Eyebrow' in names
+    ey = next(a for a in r['atoms'] if a['name'] == 'Eyebrow')
+    assert ey['n_slides'] == 5 and ey['consistent'] >= 0.9
+    assert all(a['consistent'] >= 0.5 for a in r['atoms'] if a['key'][0] == 'T')   # wandering text is a type style, not an atom

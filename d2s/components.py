@@ -402,7 +402,8 @@ def extract(slides_json, masters_json, outdir=None, canvas=(1920, 1080)):
         bg = 'photo-bg' if 'stretchedPictureFill' in fill else ('dark' if _lum_bg(fill, scheme) < 0.35 else 'light')
         lay[slide_layout_key(sd, bg, per_slide[i], chrome)].append(i + 1)
     layouts = sorted(([dict(name=layout_name(k), key=list(k), slides=v, count=len(v)) for k, v in lay.items() if len(v) >= 3]), key=lambda x: -x['count'])
-    return dict(slides=n, chrome=len(chrome), slide_bg=slide_bg, components=comps, layouts=layouts,
+    atoms = find_atoms(descs, chrome, slide_bg, scheme, conv)
+    return dict(slides=n, chrome=len(chrome), slide_bg=slide_bg, components=comps, atoms=atoms, layouts=layouts,
                 coverage=dict(clustered=sum(len(c) for c in per_slide), grouped=sum(len(g) for g in groups)))
 
 
@@ -415,3 +416,129 @@ def _lum_bg(fill, scheme):
     if r is None:
         return 1.0 if c.get('themeColor') in ('LIGHT1', 'BACKGROUND1', 'LIGHT2') else 0.0
     return 0.2126 * r.get('red', 0) + 0.7152 * r.get('green', 0) + 0.0722 * r.get('blue', 0)
+
+
+# ------------------------------------------------------------------ atoms
+ATOM_MIN_SLIDES = 4        # an atom is a single element used on at least this many slides in the same style and place
+CANVAS = (1920, 1080)
+
+
+def place_bin(d):
+    return (int(d['x'] / CANVAS[0] * 8), int(d['y'] / CANVAS[1] * 8))
+
+
+def atom_key(d):
+    """The style of one element, without where it sits; elements with the same key are the same atom, placements are recorded apart."""
+    if d['kind'] in ('text', 'panel') and d['runs']:
+        r = max(d['runs'], key=lambda r: len(r['text']))
+        return ('T', _sizeclass(r['px']), r['weight'], r['colour'])
+    if d['kind'] == 'line':
+        return ('L', round(d['weight']), d['stroke'], 'h' if d['w'] >= d['h'] else 'v')
+    if d['kind'] == 'image':
+        return ('I', int(d['w'] / 60), int(d['h'] / 60))
+    if d['kind'] == 'box':
+        return ('B', d['shapetype'], d['fill'], d['stroke'], int(d['w'] / 24), int(d['h'] / 24))
+    return None
+
+
+def atom_name(key, d, ink_like):
+    k = key[0]
+    W, H = CANVAS
+    if k == 'T':
+        px, colour = key[1], key[3]
+        if d['y'] < 0.14 * H and px <= 32 and colour not in ink_like:
+            return 'Eyebrow'
+        if d['y'] > 0.8 * H and px <= 32:
+            return 'Footnote'
+        if px >= 200:
+            return 'Display figure'
+        if px >= 100:
+            return 'Display headline'
+        if len(d['text']) <= 4 and d['x'] < 0.25 * W:
+            return 'Marker'
+        if px >= 56:
+            return 'Headline'
+        if px >= 36:
+            return 'Title'
+        return 'Body text' if px >= 24 else 'Small text'
+    if k == 'L':
+        if key[3] == 'v':
+            return 'Vertical rule'
+        return 'Hairline rule' if d['weight'] <= 3 and d['w'] >= 0.5 * W else 'Progress rule' if d['weight'] >= 4 else 'Short rule'
+    if k == 'I':
+        if d['w'] >= 0.9 * W and d['h'] >= 0.9 * H:
+            return 'Full-bleed picture'
+        return 'Logo' if d['w'] <= 300 and d['h'] <= 300 and d['y'] < 0.2 * H and d['x'] < 0.2 * W else 'Picture'
+    if k == 'B':
+        if d['w'] >= 0.9 * W and d['h'] >= 0.9 * H:
+            return 'Backdrop'
+        return 'Dot' if d['radius'] >= 0.45 * min(d['w'], d['h']) else 'Swatch' if d['w'] < 120 and d['h'] < 120 else 'Panel shape'
+    return 'Element'
+
+
+def find_atoms(descs, chrome, slide_bg, scheme, conv):
+    by = defaultdict(list)
+    for si, sd in enumerate(descs):
+        for d in sd:
+            if _is_chrome(d, chrome) or d['kind'] in ('empty', 'other', 'table'):
+                continue
+            if not (0 <= d['x'] + d['w'] / 2 <= CANVAS[0] and 0 <= d['y'] + d['h'] / 2 <= CANVAS[1]):
+                continue
+            k = atom_key(d)
+            if k:
+                by[k].append((si, d))
+    cnt = Counter(k[3] for k, v in by.items() if k[0] == 'T' for _ in v)
+    def grey(c):
+        try:
+            r, g, b = [int(c[i:i + 2], 16) for i in (1, 3, 5)]
+            return max(r, g, b) - min(r, g, b) < 24
+        except Exception:
+            return False
+    ink_like = {c for c, _ in cnt.most_common(1)} | {c for c in cnt if c and grey(c)}   # the main text colour and every grey; a saturated colour is an accent
+    atoms, taken = [], set()
+    for k, v in sorted(by.items(), key=lambda kv: -len({s for s, _ in kv[1]})):
+        slides = {s for s, _ in v}
+        if len(slides) < ATOM_MIN_SLIDES:
+            continue
+        pl = Counter(place_bin(d) for _, d in v)
+        (mb, mc), = pl.most_common(1)
+        if k[0] == 'T' and mc / len(v) < 0.5:
+            continue   # text that moves around is just a type style, already a token; an atom is something placed by convention
+        modal = next((si, d) for si, d in v if place_bin(d) == mb)
+        si, d = modal
+        nm = atom_name(k, d, ink_like)
+        base, i = nm, 2
+        while nm in taken:
+            nm, i = '%s %d' % (base, i), i + 1
+        taken.add(nm)
+        e = copy.deepcopy(d['raw'])
+        t = e.setdefault('transform', {})
+        t['translateX'] = 0
+        t['translateY'] = 0
+        body = conv.element(e, 0).replace('<img src="IMG:', '<img data-missing="IMG:')
+        examples = sorted({x['text'] for _, x in v if x['text']})[:3]
+        places = [dict(bin=list(b), n=c, x=round(next(x['x'] for _, x in v if place_bin(x) == b)), y=round(next(x['y'] for _, x in v if place_bin(x) == b))) for b, c in pl.most_common(6)]
+        atoms.append(dict(name=nm, key=k, bg=slide_bg[si] or '#ffffff', instances=len(v), n_slides=len(slides), all_slides=sorted(s + 1 for s in slides),
+                          members=1, size=[round(d['w']), round(max(d['h'], 4))], preview_body=body, kind='atom', places=places,
+                          place=(places[0]['x'], places[0]['y']), consistent=round(mc / len(v), 2), examples=examples,
+                          slots=[dict(role='text', px=d['runs'][0]['px'], weight=d['runs'][0]['weight'], colour=d['runs'][0]['colour'], fixed=len(examples) <= 1, examples=examples)] if d['runs'] else []))
+    return atoms
+
+
+def composition(desc, atoms, chrome):
+    """How one slide is built: atoms used (and whether each sits where that atom usually sits), versus free content."""
+    by_key = {a['key']: a for a in atoms}
+    used, free = [], []
+    for d in desc:
+        if _is_chrome(d, chrome) or d['kind'] in ('empty', 'other', 'table'):
+            continue
+        if not (0 <= d['x'] + d['w'] / 2 <= CANVAS[0] and 0 <= d['y'] + d['h'] / 2 <= CANVAS[1]):
+            continue
+        k = atom_key(d)
+        if k in by_key:
+            a = by_key[k]
+            usual = any(abs(p['x'] - d['x']) < 0.06 * CANVAS[0] and abs(p['y'] - d['y']) < 0.06 * CANVAS[1] for p in a['places'])
+            used.append(dict(atom=a['name'], x=round(d['x']), y=round(d['y']), usual=usual, text=d['text'][:40]))
+        elif k:
+            free.append(dict(role=d['kind'] if d['kind'] != 'panel' else 'text', x=round(d['x']), y=round(d['y']), w=round(d['w']), h=round(d['h']), text=d['text'][:40]))
+    return used, free
