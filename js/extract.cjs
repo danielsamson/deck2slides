@@ -40,7 +40,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     html += s;
   }
   fs.writeFileSync(path.join(OUT, 'preview.html'), html);
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: SLIDE_W, height: SLIDE_H }, deviceScaleFactor: 1 });
+  const b = await chromium.launch(process.env.D2S_CHROMIUM ? { executablePath: process.env.D2S_CHROMIUM } : {}); const p = await b.newPage({ viewport: { width: SLIDE_W, height: SLIDE_H }, deviceScaleFactor: 1 });
   await p.goto('file://' + path.join(OUT, 'preview.html')); await p.waitForTimeout(2500); await p.evaluate(() => document.fonts.ready);
   const secs = await p.$$('section');
   for (let i = 0; i < secs.length; i++) await secs[i].screenshot({ path: path.join(OUT, 'full_' + String(i + 1).padStart(2, '0') + '.png') });
