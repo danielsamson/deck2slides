@@ -21,7 +21,7 @@ def make_deck(deck_json, fonts_used, outdir, weights=(400,)):
             for ci, lh in enumerate(LHS):
                 x, y = COL0 + ci * CELL_W, ROW0 + ri * ROW_H
                 html.append('<div style="position:absolute;left:%dpx;top:%dpx;width:%dpx;font-family:\'%s\';font-weight:%d;font-size:%dpx;line-height:%s;color:#000">E<br>H</div>' % (x, y, CELL_W - 20, fam, w, FS, lh))
-                cells.append(dict(slide=si + 1, fam=fam, w=w, lh=lh, box=[x - 12, y - 12, x + CELL_W - 12, y + ROW_H - 40]))
+                cells.append(dict(slide=si + 1, fam=fam, w=w, lh=lh, box=[x - 12, y + 2, x + CELL_W - 12, y + ROW_H - 40]))
         html.append('</section>'); open('%s/slides/%s.html' % (outdir, sid), 'w').write('\n'.join(html))
     json.dump(dict(v=5, title='calibration', order=order, faces={k: v for k, v in src['faces'].items() if v['family'] in fams}), open(outdir + '/deck.json', 'w'))
     open(outdir + '/deck.css', 'w').write('section{background:#fff;color:#000;padding:0;display:block}')

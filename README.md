@@ -86,6 +86,15 @@ weights, letter-spacing, alignment, wrapping, corner-radius (to pill and circle,
 shadows, alpha, rotation, pictures (cover/contain, rounded), picture-effects (shadow, opacity, rotation), gif (rounded masks).
 They convert and render locally. They have **not** been through Google yet.
 
+## Why PPTX import and not the Slides API (measured)
+
+Tested on a scratch deck through `update_presentation`: the API accepts a shadow write but stores it as `NOT_RENDERED` with zero values
+(nothing is drawn); `ROUND_RECTANGLE` has a fixed radius (about 1/6 of the short side) with no way to set it; `letterSpacing` and `spacing`
+text styles are rejected; there is no picture mask. Weights (`weightedFontFamily`), line spacing, alpha, outlines, dashes, rotation and
+`replaceImage` do work. Anything exact therefore has to go through PPTX import (Drive upload with conversion), which keeps all of those.
+The export needs a working Drive upload path (direct API call with credentials, or a connector that accepts file references); an agent pasting
+base64 through a chat tool is not dependable beyond a few KB.
+
 ## Known limits
 
 - Drive connector: upload size (~0.85 MB per file via file reference); only sees files it created; no bulk trash.
