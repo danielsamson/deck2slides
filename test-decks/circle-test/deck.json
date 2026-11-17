@@ -1,0 +1,31 @@
+{
+ "v": 5,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-17T19:40:00Z"
+ },
+ "lists": "css",
+ "format": {
+  "v": 1,
+  "shared": [
+   "project/deck.css"
+  ]
+ },
+ "title": "circle photo test",
+ "order": [
+  "control",
+  "disc",
+  "ring"
+ ],
+ "faces": {
+  "bricolage-grotesque": {
+   "family": "Bricolage Grotesque",
+   "href": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400..800&display=swap"
+  },
+  "inter": {
+   "family": "Inter",
+   "href": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+  }
+ },
+ "designSystems": []
+}
