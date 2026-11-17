@@ -74,14 +74,17 @@ def render_element(el, recipe, tk, content, ox=0.0, oy=0.0):
         return '<div style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;box-sizing:border-box;background:%s;border-radius:%.0fpx"></div>' % (
             x, y, width(el, tk), el['h'], colour(el['colour'], recipe, tk), el.get('radius', 0))
     if t == 'image':
-        return '<img alt="%s" style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;object-fit:cover;%s">' % (
-            html.escape(el.get('alt', 'Picture')), x, y, width(el, tk), el['h'], ('border-radius:%.0fpx' % el['radius']) if el.get('radius') else '')
+        src = ('src="IMG:%s" ' % content) if isinstance(content, str) else ''
+        return '<img %salt="%s" style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;object-fit:cover;%s">' % (
+            src, html.escape(el.get('alt', 'Picture')), x, y, width(el, tk), el['h'], ('border-radius:%.0fpx' % el['radius']) if el.get('radius') else '')
     return ''
 
 
 def render(recipe, content, tk):
     """content: {slot_id: paragraphs | {value, unit}}, repeats: {repeat_id: [ {slot_id: ...}, ... ]}. Returns a <section>."""
     parts = []
+    if content.get('__bg'):
+        parts.append('<img src="IMG:%s" alt="" style="position:absolute;left:0px;top:0px;width:1920px;height:1080px;object-fit:cover">' % content['__bg'])
     for el in recipe.get('furniture', []) + recipe.get('slots', []):
         parts.append(render_element(el, recipe, tk, content.get(el['id'])))
     for rp in recipe.get('repeats', []):
@@ -146,13 +149,21 @@ def extract_element(el, recipe, tk, descs, ox=0.0, oy=0.0, used=None):
         big = [r for r in d['runs'] if r['px'] >= recipe['styles'][el['style']]['px'] * 0.9]
         small = [r for r in d['runs'] if r['px'] < recipe['styles'][el['style']]['px'] * 0.9]
         return dict(value=' '.join(r['text'] for r in big), unit=' '.join(r['text'] for r in small))
-    return True if el['type'] in ('rule', 'box', 'image') else None
+    if el['type'] == 'image':
+        d = _nearest(descs, x, y, ('image',), tol=60, used=used)
+        if d:
+            used.add(id(d))
+            return d['raw']['objectId']
+        return None
+    return True if el['type'] in ('rule', 'box') else None
 
 
-def extract(recipe, slide_desc, tk):
+def extract(recipe, slide_desc, tk, slide_no=None):
     used = set()
     content = {}
-    for el in recipe.get('slots', []):
+    if recipe.get('photo_background') and slide_no:
+        content['__bg'] = 'bg%d' % slide_no
+    for el in recipe.get('furniture', []) + recipe.get('slots', []):
         v = extract_element(el, recipe, tk, slide_desc, used=used)
         if v is not None:
             content[el['id']] = v

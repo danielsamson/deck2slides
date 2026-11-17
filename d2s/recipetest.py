@@ -11,8 +11,8 @@ def css(tk):
     return '\n'.join(root) + '\nsection{position:relative;width:1920px;height:1080px;overflow:hidden;font-family:var(--font-body)}\n' + th
 
 
-def page(section, tk):
-    section = re.sub(r'<img src="IMG:\d+"', '<img', section)
+def page(section, tk, imgmap=None):
+    section = G.resolve_images(section, {k: 'file://' + os.path.abspath(v) for k, v in (imgmap or {}).items()})
     section = re.sub(r'<img ([^>]*)>', r'<div style="background:#888;\1"></div>', section) if False else section
     return ('<html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap"><style>*{margin:0;box-sizing:border-box}%s</style></head><body>%s</body></html>' % (css(tk), section))
 
@@ -24,7 +24,7 @@ def shoot(files, outdir):
     subprocess.run(['node', js] + files, check=True, env=dict(os.environ, NODE_PATH='/opt/node-tools/node_modules'))
 
 
-def run(recipes_json, slides_json, masters_json, tokens_json, outdir):
+def run(recipes_json, slides_json, masters_json, tokens_json, outdir, imgmap=None):
     from PIL import Image
     import numpy as np
     outdir = os.path.abspath(outdir)
@@ -40,7 +40,7 @@ def run(recipes_json, slides_json, masters_json, tokens_json, outdir):
     for r in spec['recipes']:
         r = dict(r, font=spec['font'], styles=spec['styles'])
         for n in r['evidence']:
-            content = R.extract(r, descs[n - 1], tk)
+            content = R.extract(r, descs[n - 1], tk, n)
             rec = R.render(r, content, tk)
             src = open('%s/project/slides/s%03d.html' % (work, n)).read()
             src = src.replace('<section id="s%03d"' % n, '<section class="th-%s"' % r['theme'], 1) if False else src
@@ -48,8 +48,8 @@ def run(recipes_json, slides_json, masters_json, tokens_json, outdir):
             src = re.sub(r'<section id="s\d+" style="background:([^"]*)">', r'<section class="th-%s" style="background:\1">' % r['theme'], src)
             a = os.path.join(outdir, '%s-%d-src.html' % (r['id'], n))
             b = os.path.join(outdir, '%s-%d-rec.html' % (r['id'], n))
-            open(a, 'w').write(page(src, tk))
-            open(b, 'w').write(page(rec, tk))
+            open(a, 'w').write(page(src, tk, imgmap))
+            open(b, 'w').write(page(rec, tk, imgmap))
             jobs += [a, b]
             report.append((r['id'], n, a, b))
     shoot(jobs, outdir)

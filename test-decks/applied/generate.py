@@ -6,7 +6,7 @@ import json, os, sys, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 from d2s import dsbuild
 H = os.path.dirname(os.path.abspath(__file__))
-TK = sys.argv[1] if len(sys.argv) > 1 else H + '/../../examples/tokens/decka/system/project/tokens.json'
+TK = sys.argv[1]
 OUT = sys.argv[2] if len(sys.argv) > 2 else H
 tk = json.load(open(TK))
 tok = {t['name']: t['value'] for fam in ('spacing', 'radius', 'grid') for t in tk.get(fam, {}).get('tokens', [])}

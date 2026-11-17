@@ -5,7 +5,7 @@ Usage: python3 compose.py <system/project dir> <out dir>"""
 import json, os, re, sys, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 from d2s import dsbuild
-SYS = sys.argv[1] if len(sys.argv) > 1 else '../../examples/tokens/deckb/system/project'
+SYS = sys.argv[1]
 OUT = sys.argv[2] if len(sys.argv) > 2 else '.'
 tk = json.load(open(SYS + '/tokens.json'))
 
@@ -50,7 +50,7 @@ themes = [t['id'] for t in tk['color']['themes']]
 cls = ''.join('section.th-%s{%sbackground:var(--paper);color:var(--ink)}\n' % (th, ''.join('--%s:%s;' % (t['name'], t['value'][th]) for t in tk['color']['tokens'] if isinstance(t['value'], dict))) for th in themes)
 open(OUT + '/deck.css', 'w').write('\n'.join(root) + "\nbody{font-family:var(--font-body)}\nsection{font-family:var(--font-body)}\n" + cls)
 json.dump({'v': 5, 'createdOnFiles': {'v': 1, 'at': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}, 'lists': 'css',
-           'format': {'v': 1, 'shared': ['project/deck.css']}, 'title': 'New pages from the deck B design system', 'order': order,
+           'format': {'v': 1, 'shared': ['project/deck.css']}, 'title': 'New pages from a design system', 'order': order,
            'sections': {'s1': {'description': 'Two pages composed from the design system', 'start': order[0]}},
            'faces': {'dm-sans': {'family': 'DM Sans', 'href': 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap'}}, 'designSystems': []},
           open(OUT + '/deck.json', 'w'), indent=1)

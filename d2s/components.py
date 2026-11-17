@@ -336,7 +336,7 @@ def preview_html(c, conv):
         t['translateX'] = t.get('translateX', 0) - x0 / PX
         t['translateY'] = t.get('translateY', 0) - y0 / PX
         parts.append(conv.element(e, 0))
-    body = '\n'.join(p for p in parts if p).replace('<img src="IMG:', '<img data-missing="IMG:')
+    body = '\n'.join(p for p in parts if p)
     return W, H, body
 
 
@@ -515,7 +515,7 @@ def find_atoms(descs, chrome, slide_bg, scheme, conv):
         t = e.setdefault('transform', {})
         t['translateX'] = 0
         t['translateY'] = 0
-        body = conv.element(e, 0).replace('<img src="IMG:', '<img data-missing="IMG:')
+        body = conv.element(e, 0)
         examples = sorted({x['text'] for _, x in v if x['text']})[:3]
         places = [dict(bin=list(b), n=c, x=round(next(x['x'] for _, x in v if place_bin(x) == b)), y=round(next(x['y'] for _, x in v if place_bin(x) == b))) for b, c in pl.most_common(6)]
         atoms.append(dict(example_slide=si + 1, bbox=[round(d['x']), round(d['y']), round(d['w']), round(max(d['h'], 4))], name=nm, key=k, bg=slide_bg[si] or '#ffffff', instances=len(v), n_slides=len(slides), all_slides=sorted(s + 1 for s in slides),
@@ -614,7 +614,7 @@ def seeded_component(spec, descs, chrome, slide_bg, conv):
         t['translateX'] = t.get('translateX', 0) - x0 / PX
         t['translateY'] = t.get('translateY', 0) - y0 / PX
         parts.append(conv.element(e, 0))
-    body = '\n'.join(p for p in parts if p).replace('<img src="IMG:', '<img data-missing="IMG:')
+    body = '\n'.join(p for p in parts if p)
     texts = [d for d in first if d['runs']]
     slots = []
     for i, m in enumerate(sorted(texts, key=lambda d: (d['y'], d['x']))):

@@ -2,3 +2,21 @@ test-decks/scratch/
 __pycache__/
 *.pyc
 node_modules/
+test-decks/user-template2/images/
+test-decks/user-template2/web-images/
+
+# Working data from third-party decks (public templates read through the Slides connector): never committed.
+# Their slide JSON, extracted tokens, fonts, pictures, recipes and generated systems stay on the machine that ran the tools.
+test-decks/user-template*/
+test-decks/applied-*/
+test-decks/applied/slides/
+test-decks/applied/deck.*
+test-decks/applied/*.png
+test-decks/composed/slides/
+test-decks/composed/deck.*
+test-decks/composed/*.png
+examples/tokens/*/
+!examples/tokens/five-page/
+examples/applied*/
+examples/composed/
+examples/*-converted/

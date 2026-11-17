@@ -159,12 +159,11 @@ class Conv:
             return '\n'.join(k for k in kids if k)
         if 'image' in e:
             alt = html.escape(e.get('description') or e.get('title') or 'Image')
-            n = len(self.imgs)
             self.imgs.append(dict(url=e['image'].get('contentUrl'), slide=slide_no, id=e['objectId']))
             crop = e['image'].get('imageProperties', {}).get('cropProperties')
             if crop:
                 self.warn('image crop approximated with object-fit:cover')
-            return '<img src="IMG:%d" alt="%s" style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;object-fit:cover">' % (n, alt, x, y, w, h)
+            return '<img src="IMG:%s" alt="%s" style="position:absolute;left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;object-fit:cover">' % (e['objectId'], alt, x, y, w, h)
         if 'line' in e:
             lp = e['line'].get('lineProperties', {})
             c = self.col(lp.get('lineFill', {}).get('solidFill')) or '#000000'
@@ -258,8 +257,18 @@ def convert(slides_json, masters_json, outdir, only=None, cache=None):
         else:
             bg = lay_bg.get(s.get('slideProperties', {}).get('layoutObjectId')) or master_bg or '#ffffff'
         body = [cv.element(e, i + 1) for e in s.get('pageElements', [])]
+        if 'stretchedPictureFill' in fill:
+            body.insert(0, '<img src="IMG:bg%d" alt="" style="position:absolute;left:0px;top:0px;width:1920px;height:1080px;object-fit:cover">' % (i + 1))
         notes = ''
         sec = '<section id="%s" style="background:%s">\n%s\n</section>' % (sid, bg, '\n'.join(b for b in body if b))
         open(os.path.join(outdir, 'project', 'slides', sid + '.html'), 'w').write(sec)
         order.append(sid)
     return order, cv
+
+
+def resolve_images(html_text, mapping):
+    """Replace IMG:<key> placeholders by real urls; a picture with no file keeps a sized empty <img>."""
+    def sub(m):
+        u = mapping.get(m.group(1))
+        return 'src="%s"' % u if u else 'data-missing="1"'
+    return re.sub(r'src="IMG:([^"]+)"', sub, html_text)
