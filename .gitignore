@@ -1,0 +1,4 @@
+test-decks/scratch/
+__pycache__/
+*.pyc
+node_modules/

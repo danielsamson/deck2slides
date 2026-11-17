@@ -1,0 +1,8 @@
+python-pptx
+Pillow
+lxml
+numpy
+scipy
+fonttools
+brotli
+pytest

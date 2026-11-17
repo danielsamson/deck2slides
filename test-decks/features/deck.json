@@ -1,0 +1,31 @@
+{
+ "v": 5,
+ "title": "deck2slides feature tests",
+ "order": [
+  "font-size",
+  "line-height",
+  "weights",
+  "letter-spacing",
+  "alignment",
+  "wrapping",
+  "corner-radius",
+  "borders",
+  "shadows",
+  "alpha",
+  "rotation",
+  "pictures",
+  "picture-effects",
+  "gif"
+ ],
+ "faces": {
+  "inter": {
+   "family": "Inter",
+   "href": "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+  },
+  "bricolage-grotesque": {
+   "family": "Bricolage Grotesque",
+   "href": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200..800&display=swap"
+  }
+ },
+ "designSystems": []
+}

@@ -1,0 +1,317 @@
+"""Builds an editable PowerPoint from slides.json (written by js/extract.cjs). Every piece is native: text is text,
+cards/pills/circles are shapes, pictures are separate pictures, clips are animated GIFs. The file is made to be
+converted by Google Slides, so type is written the way Google reads it; every number is in config.py."""
+import json, math, sys, os
+from lxml import etree
+from PIL import Image
+from pptx import Presentation
+from pptx.util import Emu
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
+from pptx.oxml.ns import qn
+
+from . import config as C
+from .units import emu, hexc, rot_vec
+from .fonts import FontDB
+PT = C.PT_PER_PX
+FDB = FontDB({})          # replaced in build()
+
+A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+def E(tag, parent=None, **attrs):
+    el = etree.SubElement(parent, qn(tag)) if parent is not None else etree.Element(qn(tag))
+    for k, v in attrs.items(): el.set(k, str(v))
+    return el
+def color(parent, c, op=1.0):
+    sf = E('a:solidFill', parent); s = E('a:srgbClr', sf, val=hexc(c)); a = c.get('a', 1) * op
+    if a < 0.999: E('a:alpha', s, val=int(round(a * 100000)))
+    return sf
+def shadow(spPr, sh, op=1.0):
+    if not sh or not sh['c'] or sh['c']['a'] * op <= 0: return
+    ef = E('a:effectLst', spPr)
+    o = E('a:outerShdw', ef, blurRad=emu(sh['blur']), dist=emu(math.hypot(sh['x'], sh['y'])), dir=int(round((math.degrees(math.atan2(sh['y'], sh['x'])) % 360) * 60000)), algn='ctr', rotWithShape='0')
+    s = E('a:srgbClr', o, val=hexc(sh['c'])); E('a:alpha', s, val=int(round(sh['c']['a'] * op * 100000)))
+def geom(spPr, w, h, radius):
+    for g in spPr.findall(qn('a:prstGeom')): spPr.remove(g)
+    m = min(w, h)
+    if radius <= 0.5: g = E('a:prstGeom', None, prst='rect'); E('a:avLst', g)
+    elif radius >= m / 2 - 0.5 and abs(w - h) < 1: g = E('a:prstGeom', None, prst='ellipse'); E('a:avLst', g)
+    else:
+        g = E('a:prstGeom', None, prst='roundRect'); av = E('a:avLst', g)
+        E('a:gd', av, name='adj', fmla='val %d' % int(round(min(C.MAX_RADIUS_FRACTION, radius / m) * 100000)))
+    xf = spPr.find(qn('a:xfrm')); xf.addnext(g); return g
+def strip(sp):
+    for st in sp._element.findall(qn('p:style')): sp._element.remove(st)
+    spPr = sp._element.spPr
+    for ch in list(spPr):
+        if ch.tag not in (qn('a:xfrm'), qn('a:prstGeom')): spPr.remove(ch)
+    return spPr
+
+def text_body(sp, it, ins, forced):
+    t = it['text']; txBody = sp._element.find(qn('p:txBody'))
+    if txBody is None: txBody = E('p:txBody', sp._element)
+    for ch in list(txBody): txBody.remove(ch)
+    E('a:bodyPr', txBody, wrap='square', lIns=emu(ins[0]), tIns=emu(ins[1]), rIns=emu(ins[2]), bIns=emu(ins[3]), anchor='ctr' if t['anchor'] == 'middle' else 't', rtlCol='0')
+    E('a:lstStyle', txBody); p = E('a:p', txBody)
+    pPr = E('a:pPr', p, algn={'left': 'l', 'center': 'ctr', 'right': 'r'}[t['align']])
+    ls = E('a:lnSpc', pPr); E('a:spcPct', ls, val=int(round(FDB.spc_pct(t['fam'], t['lh']) * 100000)))
+    sb = E('a:spcBef', pPr); E('a:spcPts', sb, val=0); sa = E('a:spcAft', pPr); E('a:spcPts', sa, val=0)
+    runs = [dict(r) for r in t['runs']]
+    def rpr(parent, r, tag='a:rPr'):
+        at = dict(lang='en-GB', sz=int(round(r['fs'] * PT * 100)), b='1' if FontDB.bold(r['w']) else '0')
+        if r.get('it'): at['i'] = '1'
+        if r.get('ul'): at['u'] = 'sng'
+        if r.get('ls'): at['spc'] = int(round(r['ls'] * PT * 100))
+        e = E(tag, parent, **at); color(e, r['color'], it.get('op', 1))
+        face = FontDB.face(r['fam'], r['w'])
+        for k in (('a:latin', 'a:ea', 'a:cs') if C.EMIT_EA_CS else ('a:latin',)): E(k, e, typeface=face)
+        return e
+    last = None; out = []
+    for r in runs:                       # flatten to (text | break) pieces
+        if r.get('br'): out.append(('br', last)); continue
+        parts = r['t'].split('\x0b'); last = r
+        for i, part in enumerate(parts):
+            if i: out.append(('br', r) if forced else ('t', r, ' '))
+            if part: out.append(('t', r, part))
+    # tidy spaces around breaks and at the ends
+    clean = []
+    for o in out:
+        if o[0] == 't':
+            s = o[2]
+            if not clean or clean[-1][0] == 'br': s = s.lstrip(' ')
+            if clean and clean[-1][0] == 't' and clean[-1][2].endswith(' ') and s.startswith(' '): s = s[1:]
+            if s: clean.append(('t', o[1], s))
+        else:
+            if clean and clean[-1][0] == 't': clean[-1] = ('t', clean[-1][1], clean[-1][2].rstrip(' '))
+            clean.append(o)
+    while clean and clean[-1][0] == 't' and not clean[-1][2].strip(): clean.pop()
+    if clean and clean[-1][0] == 't': clean[-1] = ('t', clean[-1][1], clean[-1][2].rstrip(' '))
+    first = next((o[1] for o in clean if o[1]), runs[0])
+    for o in clean:
+        if o[0] == 'br': b = E('a:br', p); rpr(b, o[1] or first)
+        else: r = E('a:r', p); rpr(r, o[1]); tt = E('a:t', r); tt.text = o[2]
+    rpr(p, first, 'a:endParaRPr')
+    return ''.join(o[2] for o in clean if o[0] == 't')
+
+def add_shape(slide, it):
+    t = it.get('text'); op = it.get('op', 1)
+    if t and all(r.get('br') or r['color']['a'] * op <= 0 for r in t['runs']): t = None
+    fill, stroke = it.get('fill'), it.get('stroke')
+    if not (fill or stroke or t): return None
+    cx, cy, w, h, rot = it['cx'], it['cy'], it['w'], it['h'], it['rot']
+    pad, bw = it.get('pad') or dict(l=0, r=0, t=0, b=0), it.get('bw') or dict(l=0, r=0, t=0, b=0)
+    ins = [pad['l'] + bw['l'], pad['t'] + bw['t'], pad['r'] + bw['r'], pad['b'] + bw['b']]
+    radius = it.get('radius', 0)
+    if stroke: s = stroke['w']; w -= s; h -= s; radius = max(0, radius - s / 2); ins = [max(0, v - s / 2) for v in ins]
+    forced = False
+    if t:
+        forced = bool(t.get('risky') or (t.get('tight') and t.get('wraps')) or any(r.get('ls') for r in t['runs'] if not r.get('br')))
+        k = C.ROUND_TEXT_INSET * min(radius, min(w, h) / 2); ins = [max(0, v - k) for v in ins]
+        shift = FDB.dy(t['fam'], t['lh'], t['fs'])
+        ls_min = min([r.get('ls', 0) for r in t['runs'] if not r.get('br')] + [0])
+        single = t['lines'] == 1
+        extra = 0
+        if single or forced or t.get('tight'): extra = max(C.WIDEN_MIN_PX, C.WIDEN_FRACTION * (w - ins[0] - ins[2])) + (-ls_min * t['maxChars'] if ls_min < 0 else 0)
+        elif not fill and not stroke: extra = C.WIDEN_MULTILINE_PX
+        if fill or stroke:      # keep the shape; make room inside it
+            if t['anchor'] == 'middle':
+                if shift > 0: ins[1] += 2 * shift
+                else: ins[3] += -2 * shift
+            else: ins[1] = max(0, ins[1] + shift)
+            if extra:
+                if t['align'] == 'center': ins[0] = ins[2] = 0
+                elif t['align'] == 'left': ins[2] = 0
+                else: ins[0] = 0
+        else:                   # free text: move and widen the box itself
+            ox = {'left': extra / 2, 'center': 0, 'right': -extra / 2}[t['align']]
+            dx, dyy = rot_vec(ox, shift, rot); cx += dx; cy += dyy; w += extra
+    sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - w / 2), emu(cy - h / 2), max(1, emu(w)), max(1, emu(h)))
+    if abs(rot) > 0.01: sp.rotation = rot
+    spPr = strip(sp); geom(spPr, w, h, radius)
+    if fill: color(spPr, fill, op)
+    else: E('a:noFill', spPr)
+    ln = E('a:ln', spPr)
+    if stroke:
+        ln.set('w', str(emu(stroke['w']))); color(ln, stroke['c'], op)
+        if stroke.get('dash'): E('a:prstDash', ln, val='dash' if stroke['dash'] == 'dash' else 'sysDot')
+    else: E('a:noFill', ln)
+    if fill: shadow(spPr, it.get('shadow'), op)
+    txt = ''
+    if t:
+        txt = text_body(sp, dict(it, text=t), ins, forced)
+        if t.get('link'): sp.click_action.hyperlink.address = t['link']
+    else:
+        tb = sp._element.find(qn('p:txBody'))
+        if tb is not None:
+            for ch in list(tb): tb.remove(ch)
+            E('a:bodyPr', tb); E('a:lstStyle', tb); E('a:p', tb)
+    sp.name = (txt[:40] or ('Card' if fill else 'Outline')) if not it.get('bg') else 'Background'
+    return sp
+
+ASSETS = {}   # key -> dict(file, mime); written to manifest.json. Pictures are added by Slides itself from a URL
+              # (the upload channel only takes small files), so the PowerPoint carries a tagged placeholder per picture.
+def asset_for(it, path, cw, ch, outdir):
+    import hashlib, os
+    fit = it.get('fit', 'fill'); radius = it.get('radius', 0); op = it.get('op', 1)
+    with Image.open(path) as im: nw, nh = im.size
+    crop = fit == 'cover' and (abs(1 - (cw / ch) / (nw / nh)) > 0.005)
+    if radius <= 0.5 and not crop and op >= 0.999:
+        key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]
+        ASSETS.setdefault(key, dict(file=path, mime='image/gif' if path.lower().endswith('.gif') else 'image/jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'image/png'))
+        return key, nw, nh
+    key = 'im' + hashlib.sha1(('%s|%s|%.4f|%.4f|%.3f' % (path, fit, cw / ch, radius / min(cw, ch), op)).encode() + open(path, 'rb').read()).hexdigest()[:10]
+    out = os.path.join(outdir, 'assets', key + '.png')
+    if key not in ASSETS:
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        im = Image.open(path).convert('RGBA')
+        if fit == 'cover':
+            s = max(cw / nw, ch / nh); vw, vh = cw / s, ch / s; l, t = (nw - vw) / 2, (nh - vh) / 2
+            im = im.crop((int(round(l)), int(round(t)), int(round(l + vw)), int(round(t + vh))))
+        if im.width > 2400: im = im.resize((2400, int(round(im.height * 2400 / im.width))), Image.LANCZOS)
+        if radius > 0.5:
+            from PIL import ImageDraw, ImageChops
+            k = 4; m = Image.new('L', (im.width * k, im.height * k), 0); r = radius / cw * im.width * k
+            ImageDraw.Draw(m).rounded_rectangle((0, 0, m.width - 1, m.height - 1), r, fill=255)
+            im.putalpha(ImageChops.multiply(im.getchannel('A'), m.resize(im.size, Image.LANCZOS)))
+        if op < 0.999: im.putalpha(im.getchannel('A').point(lambda v: int(v * op)))
+        im.save(out, optimize=True); ASSETS[key] = dict(file=out, mime='image/png')
+    with Image.open(out) as im2: return key, im2.width, im2.height
+
+def add_picture_shape(slide, it, path, outdir):
+    cx, cy, rot = it['cx'], it['cy'], it['rot']
+    pad, bw = it.get('pad') or dict(l=0, r=0, t=0, b=0), it.get('bw') or dict(l=0, r=0, t=0, b=0)
+    cw, ch = it['w'] - pad['l'] - pad['r'] - bw['l'] - bw['r'], it['h'] - pad['t'] - pad['b'] - bw['t'] - bw['b']
+    if cw <= 0 or ch <= 0: return None
+    ox, oy = (pad['l'] + bw['l'] - pad['r'] - bw['r']) / 2, (pad['t'] + bw['t'] - pad['b'] - bw['b']) / 2
+    dx, dyy = rot_vec(ox, oy, rot); cx += dx; cy += dyy
+    key, nw, nh = asset_for(it, path, cw, ch, outdir)
+    if it.get('fit') == 'contain': s = min(cw / nw, ch / nh); pw, ph = nw * s, nh * s
+    else: pw, ph = cw, ch
+    ASSETS[key]['maxw'] = max(ASSETS[key].get('maxw', 0), pw)
+    if it.get('shadow'):      # the shadow sits on its own shape behind the picture
+        c = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - pw / 2 + C.SHADOW_INSET_PX), emu(cy - ph / 2 + C.SHADOW_INSET_PX), emu(pw - 2 * C.SHADOW_INSET_PX), emu(ph - 2 * C.SHADOW_INSET_PX))
+        if abs(rot) > 0.01: c.rotation = rot
+        spPr = strip(c); geom(spPr, pw - 2 * C.SHADOW_INSET_PX, ph - 2 * C.SHADOW_INSET_PX, max(0, it.get('shadow_radius', it.get('radius', 0)) - C.SHADOW_INSET_PX)); color(spPr, dict(r=255, g=255, b=255, a=1)); ln = E('a:ln', spPr); E('a:noFill', ln)
+        shadow(spPr, it['shadow'], it.get('op', 1)); c.name = 'Shadow'
+        tb = c._element.find(qn('p:txBody'))
+        for chd in list(tb): tb.remove(chd)
+        E('a:bodyPr', tb); E('a:lstStyle', tb); E('a:p', tb)
+    sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - pw / 2), emu(cy - ph / 2), max(1, emu(pw)), max(1, emu(ph)))
+    if abs(rot) > 0.01: sp.rotation = rot
+    spPr = strip(sp); E('a:noFill', spPr); ln = E('a:ln', spPr); E('a:noFill', ln)
+    tb = sp._element.find(qn('p:txBody'))
+    for chd in list(tb): tb.remove(chd)
+    E('a:bodyPr', tb, wrap='none', lIns='0', tIns='0', rIns='0', bIns='0'); E('a:lstStyle', tb); p = E('a:p', tb); r = E('a:r', p)
+    rp = E('a:rPr', r, lang='en-GB', sz='100'); color(rp, dict(r=160, g=160, b=160, a=1)); t = E('a:t', r); t.text = '{{%s}}' % key
+    if it.get('clip'): CLIPS.append(dict(key=key, clip=it['clip'], gif=it.get('gif')))
+    return sp
+CLIPS = []
+ELEMENTS = []   # mask mode: one entry per picture element on a slide
+
+
+_PLACEHOLDER = None
+def _placeholder_png():
+    global _PLACEHOLDER
+    if _PLACEHOLDER is None:
+        import io; b = io.BytesIO(); Image.new('RGBA', (1, 1), (200, 200, 200, 255)).save(b, 'PNG'); _PLACEHOLDER = b.getvalue()
+    return _PLACEHOLDER
+
+def add_picture_mask(slide, it, path, slide_id, n):
+    """Picture element with the right box, rotation and rounded-rectangle mask, holding a 1x1 placeholder. The real
+    picture is swapped in by Slides (replaceImage, CENTER_CROP for cover, CENTER_INSIDE for contain) so rounded
+    corners, cropping and alpha are the editor's own and the file never needs pre-cut pictures."""
+    import io, hashlib
+    cx, cy, rot = it['cx'], it['cy'], it['rot']
+    pad, bw = it.get('pad') or dict(l=0, r=0, t=0, b=0), it.get('bw') or dict(l=0, r=0, t=0, b=0)
+    cw, ch = it['w'] - pad['l'] - pad['r'] - bw['l'] - bw['r'], it['h'] - pad['t'] - pad['b'] - bw['t'] - bw['b']
+    if cw <= 0 or ch <= 0: return None
+    ox, oy = (pad['l'] + bw['l'] - pad['r'] - bw['r']) / 2, (pad['t'] + bw['t'] - pad['b'] - bw['b']) / 2
+    dx, dyy = rot_vec(ox, oy, rot); cx += dx; cy += dyy
+    with Image.open(path) as im: nw, nh = im.size
+    fit = it.get('fit', 'fill'); radius = it.get('radius', 0)
+    if fit == 'contain': s = min(cw / nw, ch / nh); pw, ph = nw * s, nh * s
+    else: pw, ph = cw, ch
+    method = 'CENTER_CROP' if fit in ('cover', 'fill') and abs(1 - (pw / ph) / (nw / nh)) > 0.005 else 'CENTER_INSIDE'
+    key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]
+    a = ASSETS.setdefault(key, dict(file=path, mime='image/gif' if path.lower().endswith('.gif') else 'image/jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'image/png', maxw=0))
+    a['maxw'] = max(a['maxw'], pw)
+    if it.get('shadow'):
+        c = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - pw / 2 + C.SHADOW_INSET_PX), emu(cy - ph / 2 + C.SHADOW_INSET_PX), emu(pw - 2 * C.SHADOW_INSET_PX), emu(ph - 2 * C.SHADOW_INSET_PX))
+        if abs(rot) > 0.01: c.rotation = rot
+        spPr = strip(c); geom(spPr, pw - 2 * C.SHADOW_INSET_PX, ph - 2 * C.SHADOW_INSET_PX, max(0, radius - C.SHADOW_INSET_PX)); color(spPr, dict(r=255, g=255, b=255, a=1)); ln = E('a:ln', spPr); E('a:noFill', ln)
+        shadow(spPr, it['shadow'], it.get('op', 1)); c.name = 'Shadow'
+        tb = c._element.find(qn('p:txBody'))
+        for chd in list(tb): tb.remove(chd)
+        E('a:bodyPr', tb); E('a:lstStyle', tb); E('a:p', tb)
+    pic = slide.shapes.add_picture(io.BytesIO(_placeholder_png()), emu(cx - pw / 2), emu(cy - ph / 2), max(1, emu(pw)), max(1, emu(ph)))
+    if abs(rot) > 0.01: pic.rotation = rot
+    geom(pic._element.spPr, pw, ph, radius)
+    tag = '%s.%d.%s' % (slide_id, n, key); pic._element.nvPicPr.cNvPr.set('descr', tag); pic.name = tag
+    ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
+    return pic
+
+def add_line(slide, it):
+    c = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, emu(it['x1']), emu(it['y1']), emu(it['x2']), emu(it['y2']))
+    for st in c._element.findall(qn('p:style')): c._element.remove(st)
+    spPr = c._element.spPr
+    for ch in list(spPr):
+        if ch.tag not in (qn('a:xfrm'), qn('a:prstGeom')): spPr.remove(ch)
+    ln = E('a:ln', spPr, w=emu(it['w'])); color(ln, it['c'], it.get('op', 1))
+    if it.get('dash'): E('a:prstDash', ln, val='dash' if it['dash'] == 'dash' else 'sysDot')
+    c.name = 'Line'; return c
+
+def slim(prs):
+    """Drop the 10 unused slide layouts of python-pptx's default template (keeps the blank layout every slide uses): the file shrinks
+    by ~20 KB, which matters when an upload has to travel inline as base64."""
+    used = {s.slide_layout.part.partname for s in prs.slides}
+    for lay in list(prs.slide_layouts):
+        if lay.part.partname not in used: prs.slide_layouts.remove(lay)
+
+def _slim_master(xml):
+    """The default master carries ~10 KB of placeholder text styles no slide uses; keep an empty shape tree and empty text styles."""
+    import re
+    xml = re.sub(rb'<p:cSld>.*</p:cSld>', b'<p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>', xml, flags=re.S)
+    return re.sub(rb'<p:txStyles>.*</p:txStyles>', b'<p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>', xml, flags=re.S)
+
+def slim_zip(path):
+    """Remove the template's printer settings and thumbnail (13 KB of nothing) and recompress at maximum."""
+    import zipfile, re, shutil
+    tmp = path + '.tmp'
+    with zipfile.ZipFile(path) as zi, zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zo:
+        for it in zi.infolist():
+            if 'printerSettings' in it.filename or it.filename.endswith('thumbnail.jpeg'): continue
+            d = zi.read(it.filename)
+            if it.filename == 'ppt/slideMasters/slideMaster1.xml': d = _slim_master(d)
+            if it.filename.endswith('.rels'): d = re.sub(rb'<Relationship [^>]*(printerSettings|thumbnail)[^>]*/>', b'', d)
+            zo.writestr(it.filename, d)
+    shutil.move(tmp, path)
+
+def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None):
+    global FDB; FDB = fdb; ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
+    data = json.load(open(src + '/slides.json'))
+    prs = Presentation(); prs.slide_width = Emu(C.SLIDE_EMU[0]); prs.slide_height = Emu(C.SLIDE_EMU[1])
+    from pptx.dml.color import RGBColor
+    for d in data:
+        if only and d['id'] not in only: continue
+        slide = prs.slides.add_slide(prs.slide_layouts[6]); npic = 0
+        for ph in list(slide.placeholders): ph._element.getparent().remove(ph._element)
+        def picture(it, name, force_fit=None):
+            nonlocal npic
+            path = it['src']
+            if it['type'] == 'clip' and it.get('gif'): path = it['gif']
+            it = dict(it, fit=force_fit or it.get('fit', 'fill'))
+            if picture_mode == 'mask': p = add_picture_mask(slide, it, path, d['id'], npic); npic += 1
+            else: p = add_picture_shape(slide, it, path, src)
+            return p
+        for it in d['items']:
+            ty = it['type']
+            if ty == 'shape':
+                if it.get('bg'):
+                    slide.background.fill.solid(); slide.background.fill.fore_color.rgb = RGBColor(round(it['fill']['r']), round(it['fill']['g']), round(it['fill']['b']))
+                else: add_shape(slide, it)
+            elif ty in ('img', 'clip'): picture(it, 'Picture')
+            elif ty == 'svg': picture(it, 'Drawing', 'fill')
+            elif ty == 'line': add_line(slide, it)
+            elif ty == 'link':
+                sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(it['cx'] - it['w'] / 2), emu(it['cy'] - it['h'] / 2), emu(it['w']), emu(it['h']))
+                spPr = strip(sp); E('a:noFill', spPr); ln = E('a:ln', spPr); E('a:noFill', ln); sp.click_action.hyperlink.address = it['href']; sp.name = 'Link'
+    slim(prs); prs.save(out); slim_zip(out)
+    json.dump(dict(mode=picture_mode, assets=ASSETS, elements=ELEMENTS, clips=CLIPS), open(src + '/manifest.json', 'w'), indent=1)
