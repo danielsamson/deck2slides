@@ -1,0 +1,340 @@
+{
+ "slides": 5,
+ "elements": 88,
+ "colour": {
+  "fills": [
+   {
+    "hex": "#6B5BFF",
+    "share": 0.7887
+   },
+   {
+    "hex": "#FFFFFF",
+    "share": 0.1827
+   },
+   {
+    "hex": "#FF4A1C",
+    "share": 0.0114
+   },
+   {
+    "hex": "#B4F000",
+    "share": 0.0043
+   },
+   {
+    "hex": "#14142E",
+    "share": 0.0043
+   },
+   {
+    "hex": "#F5F2EA",
+    "share": 0.0043
+   },
+   {
+    "hex": "#5B5F73",
+    "share": 0.0043
+   },
+   {
+    "hex": "#D8D3C4",
+    "share": 0.0
+   }
+  ],
+  "text": [
+   {
+    "hex": "#5B5F73",
+    "share": 0.3369
+   },
+   {
+    "hex": "#14142E",
+    "share": 0.207
+   },
+   {
+    "hex": "#C9CADB",
+    "share": 0.1757
+   },
+   {
+    "hex": "#6B5BFF",
+    "share": 0.1282
+   },
+   {
+    "hex": "#E6E3FF",
+    "share": 0.0481
+   },
+   {
+    "hex": "#FFFFFF",
+    "share": 0.0367
+   },
+   {
+    "hex": "#8A8CA8",
+    "share": 0.0289
+   },
+   {
+    "hex": "#F5F2EA",
+    "share": 0.0187
+   },
+   {
+    "hex": "#B4F000",
+    "share": 0.0174
+   },
+   {
+    "hex": "#FF4A1C",
+    "share": 0.0024
+   }
+  ],
+  "backgrounds": [
+   {
+    "hex": "#F5F2EA",
+    "n": 3
+   },
+   {
+    "hex": "#14142E",
+    "n": 1
+   }
+  ],
+  "roles": {
+   "ink": "#14142E",
+   "mute": "#5B5F73",
+   "paper": "#F5F2EA",
+   "surface": "#FFFFFF",
+   "accent-1": "#6B5BFF",
+   "accent-2": "#FF4A1C",
+   "accent-3": "#B4F000"
+  }
+ },
+ "type": {
+  "families": [
+   {
+    "font": "Inter",
+    "share": 0.9296
+   },
+   {
+    "font": "Bricolage Grotesque",
+    "share": 0.0704
+   }
+  ],
+  "sizes": [
+   {
+    "px": 144.0,
+    "share": 0.0217,
+    "fonts": [
+     "Bricolage Grotesque"
+    ],
+    "bold_share": 1.0
+   },
+   {
+    "px": 96.0,
+    "share": 0.0241,
+    "fonts": [
+     "Bricolage Grotesque"
+    ],
+    "bold_share": 1.0
+   },
+   {
+    "px": 56.0,
+    "share": 0.0247,
+    "fonts": [
+     "Bricolage Grotesque"
+    ],
+    "bold_share": 1.0
+   },
+   {
+    "px": 40.0,
+    "share": 0.0704,
+    "fonts": [
+     "Inter"
+    ],
+    "bold_share": 1.0
+   },
+   {
+    "px": 32.0,
+    "share": 0.213,
+    "fonts": [
+     "Inter"
+    ],
+    "bold_share": 0.0
+   },
+   {
+    "px": 28.0,
+    "share": 0.151,
+    "fonts": [
+     "Inter"
+    ],
+    "bold_share": 0.0
+   },
+   {
+    "px": 24.0,
+    "share": 0.4952,
+    "fonts": [
+     "Inter"
+    ],
+    "bold_share": 0.1
+   }
+  ],
+  "weights": [
+   {
+    "font": "Inter",
+    "weight": 500,
+    "share": 0.4465
+   },
+   {
+    "font": "Inter",
+    "weight": 400,
+    "share": 0.364
+   },
+   {
+    "font": "Inter",
+    "weight": 600,
+    "share": 0.1125
+   },
+   {
+    "font": "Bricolage Grotesque",
+    "weight": 700,
+    "share": 0.0487
+   },
+   {
+    "font": "Bricolage Grotesque",
+    "weight": 800,
+    "share": 0.0217
+   },
+   {
+    "font": "Inter",
+    "weight": 700,
+    "share": 0.0066
+   }
+  ],
+  "base_px": 24.0,
+  "median_step_ratio": 1.4
+ },
+ "grid": {
+  "source": "drawn guide stripes",
+  "margin_right_measured": 116.0,
+  "template_margins": null,
+  "canvas": [
+   1920.0,
+   1080.0
+  ],
+  "margin_left": 128.0,
+  "margin_right": 128.0,
+  "margin_top": 130,
+  "columns": 12,
+  "gutter": 16.0,
+  "column_width": 124.0,
+  "fit_hit_rate": 1.0,
+  "left_edges": [
+   {
+    "x": 128,
+    "n": 33
+   },
+   {
+    "x": 1376,
+    "n": 12
+   },
+   {
+    "x": 1248,
+    "n": 7
+   },
+   {
+    "x": 1108,
+    "n": 6
+   },
+   {
+    "x": 1536,
+    "n": 5
+   },
+   {
+    "x": 176,
+    "n": 3
+   },
+   {
+    "x": 736,
+    "n": 3
+   },
+   {
+    "x": 1296,
+    "n": 3
+   }
+  ],
+  "top_edges": [
+   {
+    "y": 994,
+    "n": 10
+   },
+   {
+    "y": 130,
+    "n": 5
+   },
+   {
+    "y": 568,
+    "n": 3
+   },
+   {
+    "y": 650,
+    "n": 3
+   },
+   {
+    "y": 710,
+    "n": 3
+   },
+   {
+    "y": 200,
+    "n": 2
+   }
+  ]
+ },
+ "spacing": {
+  "base_unit": 4,
+  "unit_hit_rate": 0.749,
+  "common_gaps": [
+   16,
+   26,
+   33,
+   44,
+   46,
+   64,
+   76,
+   94,
+   118,
+   120,
+   156,
+   186
+  ],
+  "samples": 227
+ },
+ "shape": {
+  "radii": [
+   {
+    "px": 22,
+    "n": 6
+   },
+   {
+    "px": 32,
+    "n": 2
+   }
+  ],
+  "strokes": [
+   {
+    "px": 2,
+    "n": 6
+   },
+   {
+    "px": 12,
+    "n": 1
+   }
+  ],
+  "circles": 2,
+  "shadow_elements": 3
+ },
+ "layouts": [
+  {
+   "name": "Blank",
+   "items": []
+  }
+ ],
+ "slide_kinds": {
+  "counts": {
+   "standard": 4,
+   "cards/grid": 1
+  },
+  "example_slide_index": {
+   "standard": 0,
+   "cards/grid": 3
+  }
+ }
+}

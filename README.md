@@ -302,7 +302,9 @@ python d2s.py tokens deck.pptx out/                      # PPTX
 python d2s.py tokens slides.json out/ --masters m.json   # Google Slides presentations.get JSON
 ```
 
-Writes `measured.json` (evidence), `tokens.json`, `tokens.dtcg.json` (W3C Design Tokens format), `tokens.css` (`:root` variables for a Claude Slides `deck.css`) and `DESIGN.md`.
+Writes `measured.json` (evidence), `tokens.json` (Claude's Design System artifact shape), `README.md` (its brand-book start), `tokens.dtcg.json` (W3C Design Tokens format, for Style Dictionary / Figma tooling), `tokens.flat.json` (internal flat form), `tokens.css` (`:root` variables for a Claude Slides `deck.css`) and `DESIGN.md`.
+
+Claude's Design System type does **not** read DTCG: it needs lists (`{"tokens":[{name,value,usage}]}`), `color.themes`, and `type.{fonts,families,groups[].styles}`. A DTCG map shows as empty. `tokens.json` follows the list shape and is checked by `tokens.validate_claude_ds`, a local mirror of the grammar in the type's `format.md`. Not verified: how the page itself renders it (its cards are generated in the browser). Not produced: line heights (not measured), font files, components, the required cover.
 
 Derived: colour roles (ink, mute, paper, surface, accents; translucent fills ignored), type families and size ladder, grid (columns, gutter, margins), spacing unit, radii, strokes, layouts and placeholders.
 

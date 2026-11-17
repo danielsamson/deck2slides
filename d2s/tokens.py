@@ -750,3 +750,122 @@ def to_dtcg(d, name='derived'):
         out['space'] = {'unit': {'$type': 'dimension', '$value': '%gpx' % t['spacing']['unit_px']}}
     out['radius'] = {('r%d' % i): {'$type': 'dimension', '$value': '%gpx' % r} for i, r in enumerate(t['radius_px'])}
     return out
+
+
+# --------------------------------------------------------------------------
+# Claude "Design System" artifact format (tokens.json read by the page)
+# Lists, not DTCG maps: {"tokens":[{name,value,usage}]}; type = fonts/families/groups.
+# --------------------------------------------------------------------------
+_NAME_OK = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+_ROLE_USAGE = {
+    'ink': 'Primary text. Most legible text colour in the source deck.',
+    'mute': 'Secondary text: captions, supporting copy.',
+    'paper': 'Slide and page background.',
+    'surface': 'Cards and panels sitting on paper.',
+}
+
+
+def to_claude_ds(d, name='derived', source=None):
+    t = to_tokens_json(d, name)
+    ty = d['type']
+    cols = []
+    for k, v in t['colour'].items():
+        use = _ROLE_USAGE.get(k) or 'Accent colour %s, measured from fills and strokes in the source.' % k.split('-')[-1]
+        cols.append({'name': k, 'value': v.lower(), 'usage': use})
+    fams = t['type']['families'] or ['system-ui']
+    keys = ['display', 'body'] + ['extra%d' % i for i in range(1, 10)]
+    families = {keys[i]: '"%s", system-ui, sans-serif' % f for i, f in enumerate(fams[:12])}
+    famkey = {f: keys[i] for i, f in enumerate(fams[:12])}
+    wmap = {}
+    for w in ty.get('weights', []):
+        wmap.setdefault(w['font'], []).append(w)
+    styles_by_fam = defaultdict(list)
+    sizes = {s['px']: s for s in ty['sizes']}
+    for nm, px in t['type']['scale_px'].items():
+        s = sizes.get(px)
+        fam = (s['fonts'][0] if s and s['fonts'] else fams[0])
+        weight = 700 if (s and s['bold_share'] >= 0.5) else 400
+        styles_by_fam[famkey.get(fam, 'body')].append(
+            {'name': nm, 'fontSize': '%gpx' % round(px, 1), 'fontWeight': weight,
+             'usage': 'Measured: %.1f%% of characters in the source use this size.' % ((s['share'] if s else 0) * 100)})
+    groups = []
+    for k, label in (('display', 'Display'), ('body', 'Text')):
+        if styles_by_fam.get(k):
+            sty = sorted(styles_by_fam[k], key=lambda x: -float(x['fontSize'][:-2]))
+            groups.append({'name': label, 'family': k, 'styles': sty})
+    for k, sty in styles_by_fam.items():
+        if k not in ('display', 'body'):
+            groups.append({'name': k.title(), 'family': k, 'styles': sty})
+    out = {'name': name, 'version': 1,
+           'color': {'themes': [{'id': 'light', 'name': 'Light'}], 'tokens': cols},
+           'type': {'fonts': [], 'families': families, 'groups': groups[:12]}}
+    u = t['spacing']['unit_px']
+    if u:
+        out['spacing'] = {'tokens': [{'name': 'space-%d' % m, 'value': '%gpx' % (u * m),
+                                      'usage': '%d x the %gpx base unit measured in the source.' % (m, u)}
+                                     for m in (1, 2, 3, 4, 6, 8, 12)]}
+    rads = [r for r in t['radius_px'] if r > 0]
+    rt = [{'name': 'radius-%d' % (i + 1), 'value': '%gpx' % r, 'usage': 'Corner radius used in the source.'}
+          for i, r in enumerate(sorted(rads)[:6])]
+    if d['shape'].get('circles'):
+        rt.append({'name': 'radius-full', 'value': '9999px', 'usage': 'Circles and pills.'})
+    if rt:
+        out['radius'] = {'tokens': rt}
+    g = t['grid']
+    gt = []
+    if g.get('columns'):
+        gt.append({'name': 'grid-columns', 'value': str(g['columns']), 'usage': 'Columns in the canvas grid (%s).' % g.get('source')})
+    for k, nm in (('margin_left', 'grid-margin'), ('gutter', 'grid-gutter'), ('column_width', 'grid-column')):
+        if g.get(k) is not None:
+            gt.append({'name': nm, 'value': '%gpx' % round(g[k], 2), 'usage': 'Measured on a %g px wide canvas.' % g['canvas'][0]})
+    if gt:
+        out['grid'] = {'note': 'Slide canvas %gx%g px.' % tuple(g['canvas']), 'tokens': gt}
+    return out
+
+
+_LEN = re.compile(r'^(0|-?\d+(\.\d+)?(px|rem|em|%)?)$')
+_HEX = re.compile(r'^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$')
+
+
+def validate_claude_ds(tk):
+    """Local mirror of format.md's grammar. Returns a list of problems (empty = reads cleanly)."""
+    bad = []
+    names = Counter()
+    for fam, body in tk.items():
+        if fam in ('name', 'version', 'type'):
+            continue
+        if not isinstance(body, dict) or not isinstance(body.get('tokens'), list):
+            bad.append('%s: not {tokens:[...]} (DTCG map?)' % fam)
+            continue
+        for e in body['tokens']:
+            n = e.get('name', '')
+            names[n] += 1
+            if not _NAME_OK.match(n):
+                bad.append('%s/%s: bad name' % (fam, n))
+            vals = list(e['value'].values()) if isinstance(e.get('value'), dict) else [e.get('value')]
+            for v in vals:
+                if fam == 'color':
+                    if not (isinstance(v, str) and (_HEX.match(v) or re.match(r'^(rgb|hsl|oklch)a?\(', v) or re.match(r'^\{[\w.-]+\}$', v))):
+                        bad.append('color/%s: unreadable value %r' % (n, v))
+                elif fam in ('spacing', 'radius'):
+                    if not _LEN.match(str(v)):
+                        bad.append('%s/%s: bad length %r' % (fam, n, v))
+    bad += ['duplicate name %s' % n for n, c in names.items() if c > 1]
+    cols = {e['name'] for e in tk.get('color', {}).get('tokens', [])}
+    for e in tk.get('color', {}).get('tokens', []):
+        v = e['value']
+        if isinstance(v, str) and v.startswith('{') and v[1:-1] not in cols:
+            bad.append('color/%s: alias of missing token' % e['name'])
+    ty = tk.get('type', {})
+    if not isinstance(ty.get('families'), dict) or not isinstance(ty.get('groups', []), list):
+        return bad + ['type: families must be {key: stack} and groups a list']
+    for grp in ty.get('groups', []):
+        if grp.get('family') not in ty.get('families', {}):
+            bad.append('type group %s: unknown family' % grp.get('name'))
+        for s in grp.get('styles', []):
+            if not _NAME_OK.match(s['name']) or not _LEN.match(str(s['fontSize'])):
+                bad.append('type style %s: bad name/fontSize' % s['name'])
+    for k, v in ty.get('families', {}).items():
+        if re.search(r'[;{}<>\\()]', v):
+            bad.append('type family %s: forbidden character' % k)
+    return bad

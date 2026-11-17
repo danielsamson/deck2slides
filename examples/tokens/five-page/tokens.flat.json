@@ -1,0 +1,76 @@
+{
+ "name": "five-page",
+ "derived": true,
+ "colour": {
+  "ink": "#14142E",
+  "mute": "#5B5F73",
+  "paper": "#F5F2EA",
+  "surface": "#FFFFFF",
+  "accent-1": "#6B5BFF",
+  "accent-2": "#FF4A1C",
+  "accent-3": "#B4F000"
+ },
+ "type": {
+  "families": [
+   "Bricolage Grotesque",
+   "Inter"
+  ],
+  "scale_px": {
+   "body": 24.0,
+   "h3": 28.0,
+   "h2": 32.0,
+   "h1": 40.0,
+   "display": 56.0,
+   "display-xl": 96.0
+  },
+  "measured_sizes_px": [
+   144.0,
+   96.0,
+   56.0,
+   40.0,
+   32.0,
+   28.0,
+   24.0
+  ]
+ },
+ "grid": {
+  "source": "drawn guide stripes",
+  "canvas": [
+   1920.0,
+   1080.0
+  ],
+  "margin_left": 128.0,
+  "margin_right": 128.0,
+  "margin_top": 130,
+  "columns": 12,
+  "gutter": 16.0,
+  "column_width": 124.0,
+  "fit_hit_rate": 1.0
+ },
+ "spacing": {
+  "unit_px": 4,
+  "common_gaps_px": [
+   16,
+   26,
+   33,
+   44,
+   46,
+   64,
+   76,
+   94,
+   118,
+   120,
+   156,
+   186
+  ]
+ },
+ "radius_px": [
+  22,
+  32
+ ],
+ "stroke_px": [
+  2,
+  12
+ ],
+ "uses_shadows": true
+}
