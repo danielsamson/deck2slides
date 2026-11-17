@@ -1,109 +1,119 @@
 #!/usr/bin/env python3
-"""Five-slide test piece for deck2slides: a Claude Slides-artifact deck (deck.json, deck.css, slides/*.html, assets/).
-Grid: 1920 x 1080, 12 columns of 118 px, 24 px gutters, 120 px side margins, 8 px baseline.
-Type: Bricolage Grotesque (display, headings) + Inter (body). Scale: 160 / 96 / 56 / 36 / 28 / 20 px.
-Images: NASA, public domain (see assets/CREDITS.md). Run: python3 generate.py"""
-import json, os
+"""Five-slide test piece in the real Claude Slides format (deck.json v5 + deck.css + one <section> per slide, uploaded /_blob/ images).
+Grid: 1920 x 1080, 12 columns of 124 px, 16 px gutters, 128 px side margins (so 140 px per column step), 8 px baseline.
+Type: Bricolage Grotesque (display, headings) + Inter (text). Scale: 144 / 96 / 56 / 40 / 32 / 24 px (nothing under 24 px, as the format requires).
+Images: NASA, public domain (assets/CREDITS.md), uploaded to the artifact; ids in blobs.json. Run: python3 generate.py"""
+import json, os, datetime
 H = os.path.dirname(os.path.abspath(__file__)); os.makedirs(H + '/slides', exist_ok=True)
 
-MARGIN, COL, GUT = 120, 118, 24
+MARGIN, COL, GUT = 128, 124, 16
 def cx(i): return MARGIN + i * (COL + GUT)                 # left edge of column i (0-based)
 def span(n): return n * COL + (n - 1) * GUT                # width of n columns
 
-INK, PAPER, ACCENT, VIOLET, LIME, MUTE, RULE = '#14142E', '#F5F2EA', '#FF4A1C', '#6B5BFF', '#B4F000', '#5B5F73', '#D8D3C4'
-slides = {}
+BLOBS = json.load(open(H + '/blobs.json'))                 # name -> {"id": ..., "file": local file the id stands for}
+def src(name): return '/_blob/' + BLOBS[name]['id']
+slides = {}; order = []
 
-def box(x, y, w, h, style='', inner='', cls=''):
-    return '<div%s style="position:absolute;left:%dpx;top:%dpx;width:%dpx;%s%s">%s</div>' % (' class="%s"' % cls if cls else '', x, y, w, 'height:%dpx;' % h if h else '', style, inner)
-def text(x, y, w, cls, t, style=''): return box(x, y, w, 0, style, t, cls)
-def img(x, y, w, h, src, style=''):
-    return '<img src="assets/%s" style="position:absolute;left:%dpx;top:%dpx;width:%dpx;height:%dpx;object-fit:cover;%s">' % (src, x, y, w, h, style)
+def pin(x, y, w=None, style=''): return 'position:absolute;left:%dpx;top:%dpx;%s%s' % (x, y, 'width:%dpx;' % w if w else '', style)
 def footer(n, dark=False):
-    c = '#8A8CA8' if dark else MUTE; rule = '#34345A' if dark else RULE
-    return [box(MARGIN, 996, span(12), 2, 'background:%s' % rule),
-            text(MARGIN, 1020, 200, 'cap', '%02d' % n, 'color:%s' % c),
-            text(cx(6), 1020, span(6), 'cap', 'deck2slides test piece', 'color:%s;text-align:right' % c)]
-def section(name, body, bg=PAPER):
-    slides[name] = '<section id="%s" style="background:%s">\n%s\n</section>' % (name, bg, '\n'.join(body))
+    return '<div class="foot%s" style="%s"><p>%02d</p><p>deck2slides test piece</p></div>' % (' dark' if dark else '', pin(MARGIN, 992, span(12)), n)
+def section(name, cls, body, bg=None):
+    order.append(name)
+    style = ' style="background:%s"' % bg if bg else ''
+    slides[name] = '<section id="%s" class="%s"%s>\n%s\n<aside>%s</aside>\n</section>' % (name, cls, style, '\n'.join(body), NOTES[name])
+
+NOTES = {'title': 'Title page. One grid, one type system, public-domain images.',
+         'grid': 'The twelve columns are drawn behind the cards. Cards span four columns each.',
+         'image': 'A real picture element: rounded corners, a soft shadow and a crop you can adjust.',
+         'system': 'The type scale and the palette this deck uses.',
+         'close': 'Closing page with image credits.'}
 
 # ---- 1 title page (dark)
-b = [box(cx(6) + 12, 120, 840, 840, 'overflow:hidden;border-radius:50%;background:#000', img(-70, -70, 980, 980, 'apollo17.jpg').replace('position:absolute;left:-70px;top:-70px', 'position:absolute;left:-70px;top:-70px')),
-     text(MARGIN, 120, 600, 'eyebrow', 'Test piece · 2026', 'color:%s' % LIME),
-     text(MARGIN, 232, span(6), 'display', 'Same deck,<br>three apps.', 'color:%s;font-size:144px;line-height:136px' % PAPER),
-     text(MARGIN, 600, span(5), 'body', 'One grid, one type system, public-domain images. Built in Claude, shown in Google Slides and PowerPoint.', 'color:#C9CADB'),
-     box(MARGIN, 920, 220, 56, 'background:%s;border-radius:999px;color:#fff;font:700 22px/56px Inter;text-align:center;letter-spacing:2px' % ACCENT, 'CLAUDE CODE')] + footer(1, True)
-section('title', b, INK)
+section('title', 'dark', [
+    '<img src="%s" alt="The Earth seen from Apollo 17" style="%s">' % (src('apollo17_disk.jpg'), pin(cx(8) + 16, 284, None, 'width:512px;height:512px;object-fit:cover;border-radius:256px')),
+    '<div class="col" style="%s">' % pin(MARGIN, 128, span(7), 'height:824px'),
+    '<div class="stack"><p class="eyebrow lime">Test piece · 2026</p><h1 class="display">Same deck,<br>three apps.</h1></div>',
+    '<div class="stack"><p class="body soft">One grid, one type system, public-domain images. Built in Claude, shown in Google Slides and PowerPoint.</p><p class="pill">CLAUDE CODE</p></div>',
+    '</div>', footer(1, True)])
 
 # ---- 2 grid + principles (the 12 columns are drawn faintly)
-b = [box(cx(i), 0, COL, 1080, 'background:rgba(107,91,255,0.07)') for i in range(12)]
-b += [text(MARGIN, 120, 600, 'eyebrow', '01 — System', 'color:%s' % VIOLET),
-      text(MARGIN, 176, span(9), 'h1', 'Twelve columns on an 8 px rhythm.')]
-cards = [('01', 'Grid', 'Every block starts on a column edge and ends on one. Gutters are 24 px, margins 120 px.', '#fff', INK, MUTE),
-         ('02', 'Type', 'Two families, six sizes. Headings in Bricolage Grotesque, text in Inter on a 40 px line.', '#fff', INK, MUTE),
-         ('03', 'Image', 'Pictures keep their own crop, mask and shadow, so they stay editable after export.', None, '#fff', '#E6E3FF')]
-for i, (n, t, d, bg, fg, mc) in enumerate(cards):
-    x = cx(i * 4); w = span(4)
-    st = ('background:%s;' % bg) if bg else 'background:linear-gradient(135deg,%s 0%%,%s 100%%);' % (VIOLET, ACCENT)
-    b.append(box(x, 520, w, 400, st + 'border-radius:32px;box-shadow:0 24px 48px rgba(20,20,46,0.14)'))
-    b.append(text(x + 48, 568, w - 96, 'h2', n, 'color:%s' % (ACCENT if bg else LIME)))
-    b.append(text(x + 48, 664, w - 96, 'h3', t, 'color:%s' % fg))
-    b.append(text(x + 48, 720, w - 96, 'body', d, 'color:%s;font-size:24px;line-height:32px' % mc))
-b += footer(2)
-section('grid', b)
+cols = ''.join('<div class="gcol" style="position:absolute;left:%dpx;top:0px;width:%dpx;height:1080px"></div>' % (cx(i), COL) for i in range(12))
+cards = [('01', 'Grid', 'Every block starts on a column edge and ends on one. Gutters are 16 px, margins 128 px.', ''),
+         ('02', 'Type', 'Two families, six sizes. Headings in Bricolage Grotesque, text in Inter on a 44 px line.', ''),
+         ('03', 'Image', 'Pictures keep their own crop, mask and shadow, so they stay editable after export.', ' grad')]
+body = ['<div style="position:absolute;left:0px;top:0px;width:1920px;height:1080px">%s</div>' % cols,
+        '<p class="eyebrow violet" style="%s">01 — System</p>' % pin(MARGIN, 128, 800),
+        '<h1 class="h1" style="%s">Twelve columns on an 8 px rhythm.</h1>' % pin(MARGIN, 184, span(9))]
+for i, (n, t, d, g) in enumerate(cards):
+    body.append('<div class="card%s" style="%s"><p class="num">%s</p><h3 class="h3">%s</h3><p class="body small">%s</p></div>' % (g, pin(cx(i * 4), 520, span(4)), n, t, d))
+body.append(footer(2))
+section('grid', 'paper', body)
 
 # ---- 3 image + text split
-b = [img(MARGIN, 120, span(6), 840, 'mars.jpg', 'border-radius:40px;box-shadow:0 32px 64px rgba(20,20,46,0.25)'),
-     text(cx(7), 160, span(5), 'eyebrow', '02 — Imagery', 'color:%s' % VIOLET),
-     text(cx(7), 216, span(5), 'h2', 'Open images, native crops.'),
-     text(cx(7), 368, span(5), 'body', 'The photograph is a real picture element: rounded corners, a soft shadow and a crop you can adjust in Slides or PowerPoint.'),
-     box(cx(7), 640, 8, 144, 'background:%s;border-radius:4px' % LIME),
-     text(cx(7) + 40, 636, span(5) - 40, 'h3', '“A pixel-faithful copy is a picture. A native one stays a deck.”'),
-     text(cx(7), 892, span(5), 'cap', 'Valles Marineris, Mars. NASA / USGS, public domain, via Wikimedia Commons.')] + footer(3)
-section('image', b)
+section('image', 'paper', [
+    '<img src="%s" alt="Mars, Valles Marineris" style="%s">' % (src('mars.jpg'), pin(MARGIN, 128, span(6), 'height:824px;object-fit:cover;border-radius:40px;box-shadow:0 32px 64px rgba(20,20,46,0.25)')),
+    '<div class="col" style="%s">' % pin(cx(7), 128, span(5), 'height:824px'),
+    '<div class="stack"><p class="eyebrow violet">02 — Imagery</p><h2 class="h2">Open images, native crops.</h2><p class="body">The photograph is a real picture element: rounded corners, a soft shadow and a crop you can adjust in Slides or PowerPoint.</p></div>',
+    '<div class="quote"><div class="bar"></div><h3 class="h3">“A pixel-faithful copy is a picture. A native one stays a deck.”</h3></div>',
+    '<p class="cap">Valles Marineris, Mars. NASA / USGS, public domain, via Wikimedia Commons.</p>', '</div>', footer(3)])
 
 # ---- 4 type + colour system
-rows = [('Display · Bricolage 800 · 160 / 0.92', 'display', 'Space', 'font-size:120px;line-height:116px', 150),
-        ('H1 · Bricolage 700 · 96 / 96', 'h1', 'Headline', '', 300),
-        ('H2 · Bricolage 700 · 56 / 64', 'h2', 'Subheading', '', 430),
-        ('H3 · Inter 600 · 36 / 44', 'h3', 'Section title', '', 530),
-        ('Body · Inter 400 · 28 / 40', 'body', 'Body copy sits on a 40 px line.', '', 620),
-        ('Caption · Inter 500 · 20 / 28', 'cap', 'Caption and credit lines, in muted ink.', '', 704)]
-b = [text(MARGIN, 80, 600, 'eyebrow', '03 — Type and colour', 'color:%s' % VIOLET)]
-for lab, cls, sample, st, y in rows:
-    b.append(text(MARGIN, y, span(7), 'cap', lab, 'color:%s' % VIOLET if cls != 'cap' else 'color:%s' % VIOLET))
-    b.append(text(MARGIN, y + 28, span(7), cls, sample, st))
-sw = [(INK, 'Ink', 'Text, dark pages'), (PAPER, 'Paper', 'Page ground'), (ACCENT, 'Signal', 'Accent, pills'), (VIOLET, 'Violet', 'Labels, links'), (LIME, 'Lime', 'Highlights'), (MUTE, 'Mute', 'Secondary text')]
-for i, (c, n, u) in enumerate(sw):
-    y = 150 + i * 118
-    b.append(box(cx(8), y, 96, 96, 'background:%s;border-radius:24px;border:2px solid %s' % (c, RULE)))
-    b.append(text(cx(8) + 128, y + 8, span(4) - 128, 'h3', n))
-    b.append(text(cx(8) + 128, y + 52, span(4) - 128, 'cap', '%s · %s' % (c.upper(), u)))
-b.append(text(MARGIN, 900, span(12), 'cap', '12 columns · 118 px · 24 px gutters · 120 px margins · 8 px baseline', 'color:%s' % MUTE))
-b += footer(4)
-section('system', b)
+rows = [('Display · Bricolage 800 · 144 / 136', 'display', 'Space'), ('H1 · Bricolage 700 · 96 / 96', 'h1', 'Headline'), ('H2 · Bricolage 700 · 56 / 64', 'h2', 'Subheading'),
+        ('H3 · Inter 600 · 40 / 44', 'h3', 'Section title'), ('Body · Inter 400 · 32 / 44', 'body', 'Body copy sits on a 44 px line.'), ('Caption · Inter 500 · 24 / 32', 'cap', 'Caption and credit lines, in muted ink.')]
+tag = {'display': 'p', 'h1': 'h1', 'h2': 'h2', 'h3': 'h3', 'body': 'p', 'cap': 'p'}
+b = ['<p class="eyebrow violet" style="%s">03 — Type and colour</p>' % pin(MARGIN, 128, 800),
+     '<div class="specimen" style="%s">%s</div>' % (pin(MARGIN, 184, span(7)), ''.join('<div class="row"><p class="tag">%s</p><%s class="%s">%s</%s></div>' % (lab, tag[c], c, smp, tag[c]) for lab, c, smp in rows))]
+sw = [('#14142E', 'Ink', 'Text, dark pages'), ('#F5F2EA', 'Paper', 'Page ground'), ('#FF4A1C', 'Signal', 'Accent, pills'), ('#6B5BFF', 'Violet', 'Labels, links'), ('#B4F000', 'Lime', 'Highlights'), ('#5B5F73', 'Mute', 'Secondary text')]
+b.append('<div class="swatches" style="%s">%s</div>' % (pin(cx(8), 184, span(4)), ''.join('<div class="sw"><div class="chip" style="background:%s"></div><div><h3 class="h3">%s</h3><p class="cap">%s · %s</p></div></div>' % (c, n, c, u) for c, n, u in sw)))
+b.append('<p class="cap" style="%s">12 columns · 124 px · 16 px gutters · 128 px margins · 8 px baseline</p>' % pin(MARGIN, 912, span(12)))
+b.append(footer(4))
+section('system', 'paper', b)
 
-# ---- 5 closing title page (gradient)
-b = [box(0, 0, 1920, 1080, 'background:linear-gradient(135deg,%s 0%%,%s 62%%)' % (VIOLET, INK)),
-     img(cx(7), 120, span(5), 840, 'aldrin.jpg', 'border-radius:40px;box-shadow:0 32px 64px rgba(0,0,0,0.35)'),
-     text(MARGIN, 120, 600, 'eyebrow', '04 — Close', 'color:%s' % LIME),
-     text(MARGIN, 232, span(6), 'display', 'Thank you.', 'color:#fff'),
-     text(MARGIN, 520, span(6), 'body', 'Questions on the grid, the type scale or the export route: this deck is the test piece for all three.', 'color:#E6E3FF'),
-     box(MARGIN, 700, span(6), 2, 'background:rgba(255,255,255,0.35)'),
-     text(MARGIN, 732, span(6), 'cap', 'Images (public domain, via Wikimedia Commons)', 'color:#fff;font-weight:600'),
-     text(MARGIN, 772, span(6), 'cap', 'Earth: NASA / Apollo 17 · Mars: NASA / USGS · Buzz Aldrin: NASA / Neil Armstrong, Apollo 11', 'color:#E6E3FF')] + footer(5, True)
-section('close', b, INK)
+# ---- 5 closing title page (gradient section)
+section('close', 'dark', [
+    '<img src="%s" alt="Buzz Aldrin on the Moon, Apollo 11" style="%s">' % (src('aldrin.jpg'), pin(cx(7), 128, span(5), 'height:824px;object-fit:cover;border-radius:40px;box-shadow:0 32px 64px rgba(0,0,0,0.35)')),
+    '<div class="col" style="%s">' % pin(MARGIN, 128, span(6), 'height:824px'),
+    '<div class="stack"><p class="eyebrow lime">04 — Close</p><h1 class="display">Thank you.</h1><p class="body soft">Questions on the grid, the type scale or the export route: this deck is the test piece for all three.</p></div>',
+    '<div class="stack credits"><p class="cap white">Images (public domain, via Wikimedia Commons)</p><p class="cap soft">Earth: NASA / Apollo 17 · Mars: NASA / USGS · Buzz Aldrin: NASA / Neil Armstrong, Apollo 11</p></div>',
+    '</div>', footer(5, True)], bg='linear-gradient(135deg,#6B5BFF 0%,#14142E 62%)')
 
 for k, v in slides.items(): open('%s/slides/%s.html' % (H, k), 'w').write(v)
-faces = json.load(open(H + '/../features/deck.json'))['faces']
-json.dump({'v': 5, 'title': 'deck2slides five-page test piece', 'order': list(slides), 'faces': faces, 'designSystems': []}, open(H + '/deck.json', 'w'), indent=1)
-open(H + '/deck.css', 'w').write("""*{box-sizing:border-box;margin:0}
-section{background:%s;color:%s;font-family:'Inter',Arial,sans-serif;padding:0;display:block}
-.eyebrow{font:600 18px/24px Inter;letter-spacing:4px;text-transform:uppercase}
-.display{font:800 160px/148px 'Bricolage Grotesque';letter-spacing:-4px}
-.h1{font:700 96px/96px 'Bricolage Grotesque';letter-spacing:-2px}
-.h2{font:700 56px/64px 'Bricolage Grotesque';letter-spacing:-1px}
-.h3{font:600 36px/44px Inter}
-.body{font:400 28px/40px Inter}
-.cap{font:500 20px/28px Inter;color:%s}
-""" % (PAPER, INK, MUTE))
-print(len(slides), 'slides:', ' '.join(slides))
+json.dump({'v': 5, 'createdOnFiles': {'v': 1, 'at': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}, 'lists': 'css', 'format': {'v': 1, 'shared': ['project/deck.css']},
+           'title': 'deck2slides five-page test piece', 'order': order,
+           'sections': {'s1': {'description': 'Title page', 'start': 'title'}, 's2': {'description': 'Grid, type, colour and imagery', 'start': 'grid'}, 's3': {'description': 'Close and credits', 'start': 'close'}},
+           'faces': {'bricolage-grotesque': {'family': 'Bricolage Grotesque', 'href': 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400..800&display=swap'},
+                     'inter': {'family': 'Inter', 'href': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'}}, 'designSystems': []}, open(H + '/deck.json', 'w'), indent=1)
+open(H + '/deck.css', 'w').write("""body{font-family:'Inter',Arial,sans-serif;color:#14142E}
+section{padding:128px;background:#F5F2EA;color:#14142E;font-family:'Inter',Arial,sans-serif}
+section.dark{background:#14142E;color:#F5F2EA}
+.eyebrow{font-size:24px;line-height:32px;font-weight:600;letter-spacing:4px;text-transform:uppercase}
+.display{font-family:'Bricolage Grotesque',Arial,sans-serif;font-size:144px;line-height:136px;font-weight:800;letter-spacing:-4px}
+.h1{font-family:'Bricolage Grotesque',Arial,sans-serif;font-size:96px;line-height:96px;font-weight:700;letter-spacing:-2px}
+.h2{font-family:'Bricolage Grotesque',Arial,sans-serif;font-size:56px;line-height:64px;font-weight:700;letter-spacing:-1px}
+.h3{font-family:Inter,Arial,sans-serif;font-size:40px;line-height:44px;font-weight:600}
+.body{font-size:32px;line-height:44px;font-weight:400}
+.small{font-size:28px;line-height:36px;color:#5B5F73}
+.cap{font-size:24px;line-height:32px;font-weight:500;color:#5B5F73}
+.lime{color:#B4F000}.violet{color:#6B5BFF}.soft{color:#C9CADB}.white{color:#FFFFFF}
+.col{display:flex;flex-direction:column;justify-content:space-between}
+.stack{display:flex;flex-direction:column;align-items:flex-start;gap:32px}
+.pill{box-sizing:border-box;background:#FF4A1C;color:#FFFFFF;font-size:24px;line-height:56px;font-weight:700;letter-spacing:2px;padding:0 32px;border-radius:999px}
+.gcol{background:rgba(107,91,255,0.07)}
+.card{box-sizing:border-box;background:#FFFFFF;border-radius:32px;box-shadow:0 24px 48px rgba(20,20,46,0.14);padding:48px;display:flex;flex-direction:column;gap:16px}
+.card.grad{background:linear-gradient(135deg,#6B5BFF 0%,#FF4A1C 100%);color:#FFFFFF}
+.card.grad .small{color:#E6E3FF}
+.num{font-family:'Bricolage Grotesque',Arial,sans-serif;font-size:56px;line-height:64px;font-weight:700;color:#FF4A1C}
+.card.grad .num{color:#B4F000}
+.quote{display:flex;gap:32px;align-items:flex-start}
+.bar{width:8px;height:132px;background:#B4F000;border-radius:4px}
+.specimen{display:flex;flex-direction:column;gap:20px}
+.row{display:flex;flex-direction:column}
+.tag{font-size:24px;line-height:32px;font-weight:500;color:#6B5BFF}
+.swatches{display:flex;flex-direction:column;gap:24px}
+.sw{display:flex;gap:32px;align-items:center}
+.chip{box-sizing:border-box;width:96px;height:96px;border-radius:24px;border:2px solid #D8D3C4}
+.foot{display:flex;justify-content:space-between}
+.foot p{font-size:24px;line-height:24px;font-weight:500;color:#5B5F73}
+.foot.dark p{color:#8A8CA8}
+""")
+print(len(slides), 'slides:', ' '.join(order))

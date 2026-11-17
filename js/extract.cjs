@@ -102,7 +102,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     };
     let svgN = 0; const rasterId = { n: 0 };
     return [...document.querySelectorAll('section')].map((sec, si) => {
-      const R = sec.getBoundingClientRect(); const warns = []; const rasterSkip = new Set(); const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), radius: 0, bg: 1 }];
+      const R = sec.getBoundingClientRect(); const warns = []; const rasterSkip = new Set(); const items = [{ type: 'shape', cx: 960, cy: 540, w: 1920, h: 1080, rot: 0, fill: col(getComputedStyle(sec).backgroundColor), grad: gradOf(getComputedStyle(sec), { w: 1920, h: 1080 }, () => {}), radius: 0, bg: 1 }];
       const textOwner = new Map();
       // Which element owns each run of text: the nearest non-inline ancestor.
       const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT); let n;

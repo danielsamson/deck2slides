@@ -1,5 +1,16 @@
 {
  "v": 5,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-17T19:20:29Z"
+ },
+ "lists": "css",
+ "format": {
+  "v": 1,
+  "shared": [
+   "project/deck.css"
+  ]
+ },
  "title": "deck2slides five-page test piece",
  "order": [
   "title",
@@ -8,14 +19,28 @@
   "system",
   "close"
  ],
- "faces": {
-  "inter": {
-   "family": "Inter",
-   "href": "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+ "sections": {
+  "s1": {
+   "description": "Title page",
+   "start": "title"
   },
+  "s2": {
+   "description": "Grid, type, colour and imagery",
+   "start": "grid"
+  },
+  "s3": {
+   "description": "Close and credits",
+   "start": "close"
+  }
+ },
+ "faces": {
   "bricolage-grotesque": {
    "family": "Bricolage Grotesque",
-   "href": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200..800&display=swap"
+   "href": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400..800&display=swap"
+  },
+  "inter": {
+   "family": "Inter",
+   "href": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
   }
  },
  "designSystems": []

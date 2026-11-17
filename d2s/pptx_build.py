@@ -450,7 +450,8 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
         for idx, it in enumerate(d['items']):
             ty = it['type']
             if ty == 'shape':
-                if it.get('bg') and template: pass                      # the template's background stays
+                if it.get('bg') and it.get('grad') and not template: add_shape(slide, it)     # a gradient slide background is a full-slide shape
+                elif it.get('bg') and template: pass                      # the template's background stays
                 elif template and it.get('role') and _fill_placeholder(slide, it, used_ph): pass
                 elif it.get('bg'):
                     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = RGBColor(round(it['fill']['r']), round(it['fill']['g']), round(it['fill']['b']))

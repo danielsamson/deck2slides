@@ -88,20 +88,23 @@ Most gaps disappear if the deck is written with the export in mind:
 
 ## The five-page test piece (same deck in three apps)
 
-`test-decks/five-page/` is a complete Claude Slides-artifact deck made for this: title page, grid and principles, image and text split, type and colour system, closing page.
-Its system: 1920 x 1080, **12 columns of 118 px, 24 px gutters, 120 px margins, 8 px baseline**; Bricolage Grotesque for display and headings, Inter for text, scale 160 / 96 / 56 / 36 / 28 / 20 px;
-public-domain NASA pictures from Wikimedia Commons (credits in `assets/CREDITS.md`); native gradients, rounded and circular picture masks, shadows. Every coordinate comes from the grid constants in `generate.py`.
+`test-decks/five-page/` is a complete deck **in the real Claude Slides format** (deck.json v5 with `format`, shared `deck.css`, one `<section>` per slide, `h1`/`p` text, nothing under 24 px, uploaded `/_blob/` images; it was
+published unchanged as a private Slides artifact and accepted without refusals). Title page, grid and principles, image and text split, type and colour system, closing page.
+Its system: 1920 x 1080, **12 columns of 124 px, 16 px gutters, 128 px margins** (140 px per column step, which divides the 1664 px content width exactly), 8 px baseline; Bricolage Grotesque for display and headings,
+Inter for text, scale 144 / 96 / 56 / 40 / 32 / 24 px; public-domain NASA pictures from Wikimedia Commons (credits in `assets/CREDITS.md`); native gradients, rounded and circular picture masks, shadows.
+Every coordinate comes from the grid constants in `generate.py`. (A first version used a 120 px margin, text under 24 px and relative image paths; it was replaced because it was not in the format.)
 
 ```
 python3 test-decks/five-page/generate.py
-python3 d2s.py convert test-decks/five-page test-decks/scratch/five --calibration <calibration.json>
-# upload deck.pptx to Drive (converts to Google Slides); thumbnails of each slide; compare with the browser render
+python3 d2s.py convert test-decks/five-page <work> --assets test-decks/five-page/assets-map.json --calibration <calibration.json>
+# upload deck.pptx to Drive (converts to Google Slides), export it as PDF (download_file_content, application/pdf), pdftoppm, compare with <work>/full_NN.png
 ```
 
-Result (`examples/five-page/compare.png`, the PPTX and the PDF are in `examples/five-page/`): pixel difference browser vs Google Slides
-**1.21 / 0.96 / 0.09 / 0.49 / 0.11 %** for slides 1-5, 0 text blocks more than 4 px off, 3 pictures embedded (the PPTX is 1.05 MB). To the eye the three renders are identical.
-The third column is **LibreOffice rendering the same PPTX, not PowerPoint** (browser vs LibreOffice 0.79 / 0.85 / 1.52 / 1.07 / 1.01 %): it shows the file is well-formed and the shapes, masks, gradients and fonts are
-read by a second consumer, but it is not proof of how PowerPoint draws it. **To close that gap, open `examples/five-page/five-page.pptx` in PowerPoint** (install Inter and Bricolage Grotesque first, fonts are not embedded).
+Result (`examples/five-page/compare.png`; the PPTX and both PDFs are in `examples/five-page/`): pixel difference **browser vs Google Slides 1.06 / 0.72 / 0.07 / 0.59 / 0.26 %** for slides 1-5, the same files rendered by LibreOffice 1.02 / 0.78 / 1.63 / 1.26 / 0.94 %.
+To the eye the three columns are identical, and the 12-column grid is exact: the three cards measure x 128-672, 688-1232 and 1248-1792 (columns 1-4, 5-8, 9-12). Limits of this test:
+- The first column is **the published deck files rendered in headless Chromium (this repo's extractor), not the live Claude Slides viewer**: the viewer is a private page and cannot be screenshotted from here. The type's own preview recipe is also only an approximation.
+- The third column is **LibreOffice, not PowerPoint**. **To close that gap, open `examples/five-page/five-page.pptx` in PowerPoint** (install Inter and Bricolage Grotesque first; fonts are not embedded) and open the deck in Claude Slides.
+- A comment left on the artifact ("card escaping its grid column") was a real bug in this deck (card padding was added to the pinned width); fixed with `box-sizing:border-box`.
 
 ## The other direction (Google Slides to PowerPoint or Claude Slides)
 
