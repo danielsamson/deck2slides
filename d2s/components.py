@@ -597,6 +597,11 @@ def find_instances(members, descs, chrome, pos_tol=30, size_tol=0.3):
     return inst
 
 
+def _on_round_box(img, members):
+    return any(m['kind'] == 'box' and m['radius'] >= 0.45 * min(m['w'], m['h']) and abs(m['x'] - img['x']) < 6 and abs(m['y'] - img['y']) < 6
+               and abs(m['w'] - img['w']) < 8 for m in members)
+
+
 def seeded_component(spec, descs, chrome, slide_bg, conv):
     mem = seed_members(descs, spec['slide'], spec['bbox'])
     if not mem:
@@ -613,7 +618,10 @@ def seeded_component(spec, descs, chrome, slide_bg, conv):
         t = e.setdefault('transform', {})
         t['translateX'] = t.get('translateX', 0) - x0 / PX
         t['translateY'] = t.get('translateY', 0) - y0 / PX
-        parts.append(conv.element(e, 0))
+        part = conv.element(e, 0)
+        if d['kind'] == 'image' and _on_round_box(d, first):
+            part = part.replace('object-fit:cover', 'object-fit:cover;border-radius:50%')
+        parts.append(part)
     body = '\n'.join(p for p in parts if p)
     texts = [d for d in first if d['runs']]
     slots = []
