@@ -175,6 +175,23 @@ What each route gives you, and what was tested. "Tested" means run end to end in
 
 **Mixing.** A and C combine well: export with A, then change only the slides that need template furniture (cover, section dividers, footers) and leave the rest. Changing a slide's layout in Slides does not move the exported shapes, so nothing is lost, but nothing is re-flowed either.
 
+## Calibration results to start from (Inter, Google Slides, measured on the 207-slide TOAST deck)
+
+`examples/calibration-inter-google-slides.json` holds the line-height table and the size cells for 190, 220 and 400 px. Start a new Inter deck with `convert --calibration examples/calibration-inter-google-slides.json`, then run the checks below. Six exports of the same deck, each judged by `d2s.py report` over every slide:
+
+| Calibration | Median slide diff | Slides over 2% | Over 5% | Text blocks off by more than 4 px | Slides under 0.15% |
+| --- | --- | --- | --- | --- | --- |
+| none | 2.34% | 135 | 34 | 482 | 0 |
+| line-height table | 0.58% | 42 | 17 | 197 | 55 |
+| + WordArt for every outline word | 0.49% | 39 | 14 | 197 | 59 |
+| + size cells for every size | 0.84% | 36 | 9 | 261 | 14 |
+| + size cells for 60 px and up | 0.77% | 32 | 9 | 240 | 20 |
+| **+ size cells for 190 px and up (kept)** | **0.47%** | **30** | **9** | **172** | **59** |
+
+Lesson: size cells fix the 190 to 400 px display words (21 to 29 px high in Google) but make 88 and 120 px titles worse, so keep them for the big sizes only. Measure before adopting a calibration, and keep the table.
+
+`d2s.py calib-sizes <deck> <work>` builds the size-cell deck (needs `<work>/slides.json` from a convert), and `d2s.py calib-sizes-fit <work> <thumbs> --base calibration.json -o out.json` merges the cells in. Filter the cells by size before use.
+
 ## Patching a deck after export: where the diff is decides how it is fixed
 
 The Claude deck is the source. The Google deck is a copy, and it stops being a copy the moment anyone edits it. Read `d2s.py report` (per slide) and `d2s.py fit-text` (per text block) and sort every difference into one of these:

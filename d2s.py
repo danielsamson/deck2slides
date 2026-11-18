@@ -45,6 +45,20 @@ def calib_deck(a):
     pptx_build.build(tmp + '/out', tmp + '/calib.pptx', F.FontDB(table, None))
     print('calibration deck:', tmp + '/calib.pptx', len(cells), 'cells,', len({c['fam'] for c in cells}), 'fonts')
 
+def calib_sizes(a):
+    """Size-aware calibration (big type sits high in Google): one cell per (size, line-height, weight, tracking) the deck uses.
+    Needs `<work>/slides.json` from a previous `convert`."""
+    tmp = a.work + '/calib_sizes'; combos = calibrate.combos_from_slides(a.work + '/slides.json', a.family)
+    cells = calibrate.make_size_deck(os.path.join(a.deck, 'deck.json'), a.family, combos, tmp + '/deck')
+    extract(tmp + '/deck', tmp + '/out'); table = F.font_table(tmp + '/deck/deck.json', tmp + '/out/fonts.json', a.work + '/fontcache')
+    pptx_build.build(tmp + '/out', tmp + '/calib_sizes.pptx', F.FontDB(table, None))
+    print('size calibration deck:', tmp + '/calib_sizes.pptx', len(cells), 'cells,', len({c['slide'] for c in cells}), 'slides')
+
+def calib_sizes_fit(a):
+    tmp = a.work + '/calib_sizes'; rows = calibrate.fit_sizes(tmp + '/deck', tmp + '/out', a.thumbs)
+    cal = json.load(open(a.base)); cal.setdefault('fonts', {}).setdefault(a.family, {})['cells'] = rows
+    json.dump(cal, open(a.o, 'w'), indent=1); print('wrote', a.o, len(rows), 'size cells for', a.family)
+
 def calib_fit(a):
     tmp = a.work + '/calib'; table = json.load(open(tmp + '/font_table.json'))
     cal, rep = calibrate.fit(tmp + '/deck', tmp + '/out', a.thumbs, table)
@@ -171,6 +185,8 @@ c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.s
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
 c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--recipes'); c.add_argument('--images'); c.add_argument('--curation'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
+c = sub.add_parser('calib-sizes'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--family', default='Inter'); c.set_defaults(f=calib_sizes)
+c = sub.add_parser('calib-sizes-fit'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--base', required=True); c.add_argument('-o', required=True); c.add_argument('--family', default='Inter'); c.set_defaults(f=calib_sizes_fit)
 c = sub.add_parser('patch'); c.add_argument('work'); c.add_argument('live'); c.add_argument('corrections'); c.set_defaults(f=patch_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)
