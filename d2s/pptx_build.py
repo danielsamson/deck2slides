@@ -320,7 +320,9 @@ def plan_embeds(data, picture_mode):
             if tot <= budget: break
             scale *= 0.8
         return {(sid, i) for *_, sid, i in sz}, scale
-    sz = sorted(sizes(scale), key=lambda r: (not r[2], r[1])); chosen = set(); seen = {}; total = 0
+    sz = sizes(scale); _cnt = {}
+    for r in sz: _cnt[r[0]] = _cnt.get(r[0], 0) + 1
+    sz = sorted(sz, key=lambda r: (not r[2], -_cnt[r[0]] / max(1, r[1]))); chosen = set(); seen = {}; total = 0
     for key, n, needs, sid, i in sz:
         add = 0 if key in seen else n
         if total + add <= budget: total += add; seen[key] = n; chosen.add((sid, i))
