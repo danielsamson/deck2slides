@@ -32,7 +32,7 @@ def fetch_family_file(family, href, cache):
 def font_table(deck_json, fonts_json, cache):
     """family -> {natural, natural_browser, source, file}. natural comes from the font file when it can be fetched,
     else from the browser's own measurement of `line-height: normal` (extract.cjs), else NATURAL_FALLBACK."""
-    faces = {v['family']: v['href'] for v in json.load(open(deck_json)).get('faces', {}).values()}
+    faces = {v['family']: v['href'] for v in json.load(open(deck_json)).get('faces', {}).values() if v.get('href')}
     out = {}
     for fam, info in json.load(open(fonts_json)).items():
         e = dict(natural_browser=info.get('naturalBrowser'), weights=info.get('weights', []))
