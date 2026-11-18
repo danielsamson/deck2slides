@@ -54,7 +54,7 @@ PICTURE_SHADOW = 'native'      # 'native': outerShdw on the picture itself; 'sha
 PICTURE_ALPHA = False          # alphaModFix on the placeholder picture (the API cannot set image transparency: 'transparency cannot be updated')
 SHADOW_INSET_PX = 1            # a picture's shadow shape is this much smaller on each side so its corners never show
 MAX_PIC_WIDTH_FACTOR = 2.0     # pictures are bundled at most this many times their on-slide width (connector size limit)
-BUNDLE_LIMIT_KB = 2900         # connector limit: a 3.03 MB file uploaded, a 6 MB one was refused (4.2 MB per call). An earlier session measured 0.85 MB (1.1 MB failed); that was not reproduced
+BUNDLE_LIMIT_KB = 2900         # connector limit: a 3.03 MB file uploaded, a 6 MB one was refused (4.2 MB per call). The 0.85 MB figure an earlier session saw was an upload to My Drive root with no parentId, which fails above ~0.7 MB with 'Requested entity was not found'. Always pass a folder parentId (README: Root vs folder uploads)
 
 # --- Clips (GIF) ---------------------------------------------------------------------------------------------
 GIF_MAX_FRAMES = 999           # Slides refuses >= 1000 frames ("Internal error" via API; the editor gives the message)

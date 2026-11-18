@@ -19,7 +19,7 @@ Offline regression: the pitch deck (28 slides) rebuilt with this package plus `e
 
 **Known constraint:** file-reference uploads (Drive `create_file` with `base64Content = sha256:<hash>:<absolute path>`) work in some
 sessions and not others; when they do not, a session that has them must do the upload. When they work, the file must sit **inside the
-session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 3.03 MB file uploaded fine and a 6 MB one was refused by the connector (4.2 MB per call); the old 0.85 MB figure was wrong. Hand-typed base64 is not dependable.
+session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 3.03 MB file uploaded fine and a 6 MB one was refused by the connector (4.2 MB per call); the old 0.85 MB figure was a root-upload artefact (see next paragraph). Hand-typed base64 is not dependable.
 
 **Root vs folder uploads (measured again, 18 Nov, TOAST deck):** the 0.85 MB cap that shows up in some sessions is not a size cap. A Drive `create_file` **without a `parentId`** (My Drive root) refused every file over about 0.7 MB with `Requested entity was not found` (700 KB uploaded, 1 MB and 2 MB did not, same directory, same file-reference form). The same 2.6 MB deck uploaded and converted at once with `parentId` set to a scratch **folder**. So: always pass `parentId` of a folder (create one with `create_file`, `mimeType application/vnd.google-apps.folder`, if there is none). The real ceiling is the connector's 4.2 MB per call (about 3.1 MB of files). Do not shrink pictures or split into many small bundles to dodge a limit that was never there: that cost this session about 16 bundles and 200 hand-copied image requests for a deck that fits in one upload and 5 bundles.
 
@@ -202,9 +202,12 @@ python3 d2s.py convert ... --calibration calibration.json
 
 ## Agent checklist for a conversion (connector steps)
 
+The same steps, with the traps, are in `.claude/skills/export-to-google-slides/SKILL.md` (a skill for agents using the Drive and Slides MCP connectors). Read it before the first upload.
+
+
 1. `d2s.py convert` as above. Note `deck.pptx` and `pack/`.
 2. Drive `create_file`, `contentMimeType: application/vnd.openxmlformats-officedocument.presentationml.presentation`
-   (converts to Google Slides), `parentId` = the test/output folder. Preferred: `base64Content` as a file reference
+   (converts to Google Slides), `parentId` = **a Drive folder, always** (without one, files over ~0.7 MB fail with `Requested entity was not found`; see "Root vs folder uploads" above). Preferred: `base64Content` as a file reference
    `sha256:<hash>:<absolute path>` (worked in the last session for files under the working directory). If it is refused, a session
    that has file references must upload it (see Known constraint above).
 3. `read_presentation` with `fields` = `gslides.READ_ELEMENTS_MASK` -> save the JSON; `gslides.ids_by_tag` gives picture object ids.
@@ -241,7 +244,7 @@ measurement, not re-measured; *failed* = tried and does not work.
 | 12 | Inline SVG is rasterised to a transparent PNG | - | carried over, untested |
 | 13 | Shadows, alpha, rotation, colours, borders | slides `shadows`, `alpha`, `rotation`, `colour`: 0.00% pixel difference; `borders` 0.52% (solid/dashed/dotted drawn, not inspected one by one) | **verified** |
 | 14 | **Now native (verified):** linear and radial gradients (angle, keywords, px and % stops, alpha stops; radial assumes the centre), `clip-path` polygon / circle / ellipse / inset (square corners), `overflow:hidden` clipping of shapes and pictures (curves become polygons with 32 points per quarter circle, about 0.1 px), double border (`cmpd=dbl`), 50% radius as a true ellipse. **Drawn as a picture (raster island), warned at convert time:** `filter: blur()` and group opacity over overlapping children - the element and its children are rendered alone to a transparent PNG at 2x and embedded, so any text inside them stops being editable. **Still lost, warned:** blend modes (the probe happened to match because it multiplied over a flat colour), `background-image` that is not a single gradient, `inset(... round ...)` (drawn square), radial-gradient positions other than the centre | `unsupported` 19.5% -> 0.00%; `layering` 3.1% -> 0.00%; `native-effects` 0.00% | **verified** |
-| 15 | Upload size: a 3.03 MB PPTX uploads; a 6 MB one is refused by the connector (4.2 MB per call, about 3.1 MB for files). The old 0.85 MB figure was wrong | cap tests | **verified** |
+| 15 | Upload size: a 3.03 MB PPTX uploads; a 6 MB one is refused by the connector (4.2 MB per call, about 3.1 MB for files). The old 0.85 MB figure was an upload to My Drive root without a `parentId`, not a size cap | cap tests | **verified** |
 | 16 | Text with `line-height` above 2.0 whose box is one line high (the "line-height = box height" centring idiom) is centred as one natural line (`anchor=middle`); other first-line offsets are extrapolated at slope -0.5 per unit line height up to 2.0 | `line-height` slide 0.28% -> 0.00%; the pill probe's text lined up | **verified** to 2.0 |
 | 17 | `<img>` with a background colour gets a shape behind it (`contain` letterboxes) | `pictures` | **verified** |
 
@@ -290,7 +293,7 @@ base64 through a chat tool is not dependable beyond a few KB.
 
 ## Known limits
 
-- Drive connector: upload size (about 3.1 MB of files per call, file inside the working directory); only sees files it created; no bulk trash.
+- Drive connector: upload size (about 3.1 MB of files per call, file inside the working directory, **`parentId` must be a folder**: root uploads fail above ~0.7 MB); only sees files it created; no bulk trash.
 - Still manual: GIFs over the cap (shared-folder link), opacity on placeholder pictures, blur, blend modes, group opacity.
 - Only Inter, Bricolage Grotesque, Instrument Sans and Fredoka have ever been compared with Google. Do not assume other fonts; run calibration.
 - Weight names for other families may not exist in Google's font list; check the `weights` slide.

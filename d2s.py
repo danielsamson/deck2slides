@@ -35,6 +35,7 @@ def convert(a):
     pptx_build.build(a.work, a.work + '/deck.pptx', fdb, a.picture_mode, template=a.template, corrections=corr)
     packs, too_big = bundles.pack(a.work)
     print('deck.pptx %d KB; %d bundles %s; too big for the connector (use a shared Drive folder): %s' % (os.path.getsize(a.work + '/deck.pptx') // 1024, len(packs), [p['kb'] for p in packs], too_big or 'none'))
+    print('Upload tip: pass parentId = a Drive FOLDER to create_file. Without one, files over ~0.7 MB fail with "Requested entity was not found" (not a real size cap; the cap is ~3.1 MB). See README, "Root vs folder uploads", and .claude/skills/export-to-google-slides/SKILL.md.')
 
 def calib_deck(a):
     tmp = a.work + '/calib'; extract(a.deck, a.work + '/probe', a.assets, None)         # only to learn which fonts the deck uses
