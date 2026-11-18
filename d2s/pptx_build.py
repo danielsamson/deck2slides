@@ -76,7 +76,9 @@ def text_body(sp, it, ins, forced):
     if txBody is None: txBody = E('p:txBody', sp._element)
     for ch in list(txBody): txBody.remove(ch)
     nowrap = C.WRAP_NONE_TIGHT and (t.get('nowrap') or t.get('over', 0) > 0.5 or (t.get('tight') and (t['lines'] == 1 or forced)))
-    E('a:bodyPr', txBody, wrap='none' if nowrap else 'square', lIns=emu(ins[0]), tIns=emu(ins[1]), rIns=emu(ins[2]), bIns=emu(ins[3]), anchor='ctr' if t['anchor'] == 'middle' else 't', rtlCol='0')
+    bp = E('a:bodyPr', txBody, wrap='none' if nowrap else 'square', lIns=emu(ins[0]), tIns=emu(ins[1]), rIns=emu(ins[2]), bIns=emu(ins[3]), anchor='ctr' if t['anchor'] == 'middle' else 't', rtlCol='0')
+    if any(r.get('stroke') and r['color']['a'] <= 0.01 for r in t['runs'] if not r.get('br')):
+        wp = E('a:prstTxWarp', bp, prst='textPlain'); E('a:avLst', wp)      # outline text as WordArt: Slides keeps it editable, with its outline
     E('a:lstStyle', txBody); p = E('a:p', txBody)
     pPr = E('a:pPr', p, algn={'left': 'l', 'center': 'ctr', 'right': 'r'}[t['align']])
     ls = E('a:lnSpc', pPr); E('a:spcPct', ls, val=int(round(FDB.spc_pct(t['fam'], t['lh']) * 100000)))
@@ -87,7 +89,12 @@ def text_body(sp, it, ins, forced):
         if r.get('it'): at['i'] = '1'
         if r.get('ul'): at['u'] = 'sng'
         if r.get('ls'): at['spc'] = int(round(r['ls'] * PT * 100))
-        e = E(tag, parent, **at); color(e, r['color'], it.get('op', 1))
+        e = E(tag, parent, **at)
+        if r.get('stroke'):               # outline text: a:ln first, then no fill when the fill is transparent
+            ln = E('a:ln', e, w=emu(r['stroke']['w'])); color(ln, r['stroke']['c'], it.get('op', 1))
+            if r['color']['a'] <= 0.01: E('a:noFill', e)
+            else: color(e, r['color'], it.get('op', 1))
+        else: color(e, r['color'], it.get('op', 1))
         face = FontDB.face(r['fam'], r['w'])
         for k in (('a:latin', 'a:ea', 'a:cs') if C.EMIT_EA_CS else ('a:latin',)): E(k, e, typeface=face)
         return e
@@ -118,9 +125,12 @@ def text_body(sp, it, ins, forced):
     rpr(p, first, 'a:endParaRPr')
     return ''.join(o[2] for o in clean if o[0] == 't')
 
+try: WORDART_CAL = json.load(open(os.path.join(os.path.dirname(__file__), 'wordart_cal.json')))
+except Exception: WORDART_CAL = {}
+
 def add_shape(slide, it):
     t = it.get('text'); op = it.get('op', 1)
-    if t and all(r.get('br') or r['color']['a'] * op <= 0 for r in t['runs']): t = None
+    if t and all(r.get('br') or (r['color']['a'] * op <= 0 and not r.get('stroke')) for r in t['runs']): t = None
     _pad, _bw = it.get('pad') or {}, it.get('bw') or {}
     _inner_h = it['h'] - sum(_pad.get(k, 0) + _bw.get(k, 0) for k in ('t', 'b'))
     if t and t.get('lines') == 1 and t.get('lh') and t['lh'] > C.DY_EXTRAP_MAX_LH and abs(_inner_h - t['lh'] * t['fs']) < 3:
@@ -135,7 +145,11 @@ def add_shape(slide, it):
     ins = [pad['l'] + bw['l'], pad['t'] + bw['t'], pad['r'] + bw['r'], pad['b'] + bw['b']]
     radius = it.get('radius', 0)
     if stroke: s = stroke['w']; w -= s; h -= s; radius = max(0, radius - s / 2); ins = [max(0, v - s / 2) for v in ins]
-    forced = False
+    forced = False; wa_geom = None
+    if t and t.get('wa') and any(r.get('stroke') and r['color']['a'] <= 0.01 for r in t['runs'] if not r.get('br')):
+        wa = t['wa']; word = ''.join(r.get('t', '') for r in t['runs'] if not r.get('br')); cal = WORDART_CAL.get(word)
+        if not cal: print('WARNING wordart not calibrated: %r (run d2s/wordart_cal.py gen/fit); using the average ratios' % word); cal = dict(rx=1.16, ry=1.11, ox=-0.002, oy=-0.005)
+        bw, bh = wa['w'] / cal['rx'], wa['h'] / cal['ry']; wa_geom = (wa['x'] - cal['ox'] * bw + bw / 2, wa['y'] - cal['oy'] * bh + bh / 2, bw, bh); rot = 0     # WordArt: Slides sizes the word by its box, ink = box x (rx, ry), measured per word
     if t:
         forced = bool(t.get('risky') or (t.get('tight') and t.get('wraps')) or any(r.get('ls') for r in t['runs'] if not r.get('br')))
         if it.get('ell'): kx, ky = 0.1464 * w, 0.1464 * h; ins = [max(0, ins[0] - kx), max(0, ins[1] - ky), max(0, ins[2] - kx), max(0, ins[3] - ky)]
@@ -159,6 +173,7 @@ def add_shape(slide, it):
         else:                   # free text: move and widen the box itself
             ox = {'left': extra / 2, 'center': 0, 'right': -extra / 2}[t['align']]
             dx, dyy = rot_vec(ox, shift, rot); cx += dx; cy += dyy; w += extra
+    if wa_geom: cx, cy, w, h = wa_geom; ins = [0, 0, 0, 0]
     sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - w / 2), emu(cy - h / 2), max(1, emu(w)), max(1, emu(h)))
     if abs(rot) > 0.01: sp.rotation = rot
     spPr = strip(sp); geom(spPr, w, h, radius, it.get('ell', False), cust)
@@ -276,7 +291,7 @@ def plan_embeds(data, picture_mode):
     budget = C.UPLOAD_BUDGET_BYTES - C.UPLOAD_RESERVE_BYTES; cands = []
     for d in data:
         for i, it in enumerate(d['items']):
-            if it['type'] in ('img', 'svg') and it.get('src') and os.path.exists(it['src']):
+            if it['type'] in ('img', 'svg') and it.get('src') and os.path.exists(it['src']) and not it['src'].lower().endswith('.svg'):
                 cands.append((d['id'], i, it))
     def sizes(scale):
         out = []
@@ -297,6 +312,26 @@ def plan_embeds(data, picture_mode):
         add = 0 if key in seen else n
         if total + add <= budget: total += add; seen[key] = n; chosen.add((sid, i))
     return chosen, scale
+
+def add_svg_shape(slide, it, path):
+    """An SVG file as one native custom-geometry shape (vector, editable in Slides). The viewBox is stretched to the item's box."""
+    from . import svgshape
+    info = svgshape.load(path); subs = svgshape.fractions(info)
+    if not subs: return None
+    w, h, cx, cy, rot, op = it['w'], it['h'], it['cx'], it['cy'], it.get('rot', 0), it.get('op', 1)
+    sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - w / 2), emu(cy - h / 2), max(1, emu(w)), max(1, emu(h)))
+    if abs(rot) > 0.01: sp.rotation = rot
+    spPr = strip(sp); custgeom(spPr, subs)
+    if info['fill']: color(spPr, info['fill'], op)
+    else: E('a:noFill', spPr)
+    ln = E('a:ln', spPr)
+    if info['stroke'] and info['sw'] > 0:
+        ln.set('w', str(emu(info['sw'] * w / info['vb'][0]))); color(ln, info['stroke'], op); E('a:round', ln)
+    else: E('a:noFill', ln)
+    sp.name = 'Vector'
+    tb = sp._element.find(qn('p:txBody'))
+    if tb is not None: sp._element.remove(tb)
+    return sp
 
 def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     """Picture element with the right box, rotation and rounded-rectangle mask, holding a 1x1 placeholder. The real
@@ -443,6 +478,7 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
             nonlocal npic
             path = it['src']
             if it['type'] == 'clip' and it.get('gif'): path = it['gif']
+            if path.lower().endswith('.svg'): return add_svg_shape(slide, it, path)
             it = dict(it, fit=force_fit or it.get('fit', 'fill'))
             if picture_mode in ('mask', 'auto', 'embed'): p = add_picture_mask(slide, it, path, d['id'], npic, escale if (d['id'], idx) in embeds else None); npic += 1
             else: p = add_picture_shape(slide, it, path, src)
