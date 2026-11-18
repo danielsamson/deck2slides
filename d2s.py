@@ -76,6 +76,11 @@ def patch_cmd(a):
     print('%d requests (%d skipped)' % (len(reqs), sum(1 for r in rep if r[1] == 'skipped')), file=sys.stderr)
     print(gslides.dump(reqs))
 
+def visdiff_cmd(a):
+    from d2s import visdiff
+    made = visdiff.run(a.work, a.thumbs, a.out, set(a.slides.split(',')) if a.slides else None, a.worst)
+    print('\n'.join(made)); print(len(made), 'sheets in', a.out)
+
 def pdf2png(a):
     os.makedirs(a.out, exist_ok=True)
     subprocess.run(['pdftoppm', '-png', '-scale-to-x', '1920', '-scale-to-y', '1080', a.pdf, a.out + '/pp'], check=True)
@@ -187,6 +192,7 @@ c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out')
 c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--recipes'); c.add_argument('--images'); c.add_argument('--curation'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
 c = sub.add_parser('calib-sizes'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--family', default='Inter'); c.set_defaults(f=calib_sizes)
 c = sub.add_parser('calib-sizes-fit'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--base', required=True); c.add_argument('-o', required=True); c.add_argument('--family', default='Inter'); c.set_defaults(f=calib_sizes_fit)
+c = sub.add_parser('visdiff'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('-o', '--out', required=True); c.add_argument('--slides'); c.add_argument('--worst', type=int, default=0); c.set_defaults(f=visdiff_cmd)
 c = sub.add_parser('patch'); c.add_argument('work'); c.add_argument('live'); c.add_argument('corrections'); c.set_defaults(f=patch_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)
