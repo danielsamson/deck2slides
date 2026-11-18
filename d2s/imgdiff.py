@@ -85,5 +85,6 @@ def fit_text(workdir, thumbdir, prev=None, ref='noimg', min_px=2):
             if r['lines'] == 1:
                 e['dx'] = round(float(e.get('dx', 0) + d[0]), 1)
                 dw = d[2] - d[0]
-                if abs(dw) >= 3 and abs(dw) / max(1, r['n'] - 1) <= 0.07 * r['fs']: e['dw'] = round(float(e.get('dw', 0) + (d[2] - d[0])), 1)
+                gap = abs(dw) / max(1, r['n'] - 1)
+                if abs(dw) >= 3 and (gap <= 0.07 * r['fs'] or (abs(d[0]) <= 3 and gap <= 0.25 * r['fs'])): e['dw'] = round(float(e.get('dw', 0) + (d[2] - d[0])), 1)
     print('corrected blocks:', n); return out
