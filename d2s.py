@@ -54,6 +54,14 @@ def fit_text_cmd(a):
     prev = json.load(open(a.prev)) if a.prev else None
     json.dump(imgdiff.fit_text(a.work, a.thumbs, prev), open(a.o, 'w'), indent=1); print('wrote', a.o)
 
+def patch_cmd(a):
+    from d2s import patch
+    slides = json.load(open(a.work + '/slides.json')); live = json.load(open(a.live)); corr = json.load(open(a.corrections))
+    reqs, rep = patch.plan(slides, live, corr)
+    for r in rep: print('%-9s %-28s %s' % (r[1], r[0], r[2]), file=sys.stderr)
+    print('%d requests (%d skipped)' % (len(reqs), sum(1 for r in rep if r[1] == 'skipped')), file=sys.stderr)
+    print(gslides.dump(reqs))
+
 def pdf2png(a):
     os.makedirs(a.out, exist_ok=True)
     subprocess.run(['pdftoppm', '-png', '-scale-to-x', '1920', '-scale-to-y', '1080', a.pdf, a.out + '/pp'], check=True)
@@ -163,5 +171,6 @@ c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.s
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
 c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--recipes'); c.add_argument('--images'); c.add_argument('--curation'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
+c = sub.add_parser('patch'); c.add_argument('work'); c.add_argument('live'); c.add_argument('corrections'); c.set_defaults(f=patch_cmd)
 c = sub.add_parser('report'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('--ref', default='noimg'); c.add_argument('--ignore-pictures', action='store_true'); c.add_argument('--only'); c.add_argument('--diffs'); c.set_defaults(f=report)
 a = p.parse_args(); a.f(a)

@@ -175,6 +175,20 @@ What each route gives you, and what was tested. "Tested" means run end to end in
 
 **Mixing.** A and C combine well: export with A, then change only the slides that need template furniture (cover, section dividers, footers) and leave the rest. Changing a slide's layout in Slides does not move the exported shapes, so nothing is lost, but nothing is re-flowed either.
 
+## Patching a deck after export: where the diff is decides how it is fixed
+
+The Claude deck is the source. The Google deck is a copy, and it stops being a copy the moment anyone edits it. Read `d2s.py report` (per slide) and `d2s.py fit-text` (per text block) and sort every difference into one of these:
+
+| Where the diff is | What it means | Fix | Re-export? |
+| --- | --- | --- | --- |
+| The same font, size or word is off on many slides (display type high, outline words stretched) | A calibration gap | Calibrate: `calib-deck` / `calib-fit` for text, `wordart_cal.py gen/fit` for outline words; commit `calibration.json` / `d2s/wordart_cal.json` | Yes, **only if the Google deck has not been edited** |
+| A few blocks on a few slides are off by more than 4 px | Per-block error | `fit-text` writes `corrections.json`; `convert --corrections` applies it | Yes, same condition |
+| The Google deck has been edited by a person | Re-export would overwrite their work | **Patch in place.** Read the live deck (`read_presentation`, fields `slides.objectId,slides.pageElements(objectId,size,transform)`), run `d2s.py patch <work> live.json corrections.json`, send the printed requests with `update_presentation`. Blocks that match zero or several elements are skipped and listed, never guessed | No |
+| Pictures wrong or missing | Bundle or placeholder problem | `replaceImage` on the tagged elements (skill, step 6) | No |
+| Shadows, letter-spacing, masks, blur, transitions, animation | The Slides API cannot set them | Do not patch. Change the source design if it matters, otherwise list it for the user | No |
+
+Rules: (1) before hand-off, fix systematic gaps at the source and re-export; (2) after hand-off, never re-export over the user's deck: patch, or export to a new deck and say so; (3) patch only what the tool can match unambiguously; (4) after any patch or re-export, run `report` again and give the numbers; (5) write the new calibration or corrections back into the repo so the next deck starts better.
+
 ## Install and run
 
 ```
