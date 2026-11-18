@@ -35,7 +35,7 @@ def text_offsets(slide, ref_png, google_png, margin=14, ignore=()):
     A, G = load(ref_png), load(google_png); rows = []
     for x0, y0, x1, y1 in ignore:      # picture areas (embedded or not) are blanked in both images so they cannot be mistaken for ink
         for I in (A, G): I[max(0, int(y0)):int(y1) + 1, max(0, int(x0)):int(x1) + 1] = 255
-    for it in slide['items']:
+    for ix, it in enumerate(slide['items']):
         t = it.get('text')
         if not t or abs(it['rot']) > 0.01: continue
         r = next((r for r in t['runs'] if not r.get('br')), None)
@@ -43,7 +43,7 @@ def text_offsets(slide, ref_png, google_png, margin=14, ignore=()):
         c = np.array([r['color']['r'], r['color']['g'], r['color']['b']])
         box = (int(max(0, it['cx'] - it['w'] / 2 - margin)), int(max(0, it['cy'] - it['h'] / 2 - margin)), int(min(1920, it['cx'] + it['w'] / 2 + margin)), int(min(1080, it['cy'] + it['h'] / 2 + margin)))
         a, g = ink_bbox(A, box, c), ink_bbox(G, box, c)
-        rows.append(dict(text=''.join(x.get('t', '|') for x in t['runs'])[:26], fam=t['fam'], fs=t['fs'], lh=t['lh'], lines=t['lines'], d=None if not a or not g else (g[0] - a[0], g[1] - a[1], g[2] - a[2], g[3] - a[3])))
+        rows.append(dict(idx=ix, n=len(''.join(x.get('t', '|') for x in t['runs'])), text=''.join(x.get('t', '|') for x in t['runs'])[:26], fam=t['fam'], fs=t['fs'], lh=t['lh'], lines=t['lines'], d=None if not a or not g else (g[0] - a[0], g[1] - a[1], g[2] - a[2], g[3] - a[3])))
     return rows
 
 def picture_boxes(slide, pad=0.0):
@@ -67,3 +67,23 @@ def report(workdir, thumbdir, ref='noimg', out_dir=None, only=None, ignore_pictu
         res.append(dict(slide=n, id=s['id'], pct=round(d['pct'], 3), regions=len(d['regions']), blocks=len(offs), max_off=max(mx) if mx else 0,
                         mean_off=round(float(np.mean(mx)), 2) if mx else 0, bad=sum(1 for v in mx if v > 4), top=[r for r in d['regions'][:3]]))
     return res
+
+
+def fit_text(workdir, thumbdir, prev=None, ref='noimg', min_px=2):
+    """Closed-loop correction. Measures every clean text block of an export against the browser render and returns
+    {'slide id:item index': {dy, dx, dw}} (px, Google minus browser), added to `prev` so a second pass refines the first.
+    A block is 'clean' when its ink box is not polluted by a neighbour: top and bottom offsets agree within 2 px."""
+    data = json.load(open(workdir + '/slides.json')); out = {k: dict(v) for k, v in (prev or {}).items()}; n = 0
+    for s in data:
+        k_ = s['i'] + 1; tp = '%s/p%d.png' % (thumbdir, k_); rp = '%s/%s_%02d.png' % (workdir, ref, k_)
+        if not os.path.exists(tp): continue
+        for r in text_offsets(s, rp, tp, ignore=picture_boxes(s)):
+            d = r['d']
+            if not d or abs(d[1] - d[3]) > 2 or max(abs(v) for v in d) < min_px: continue
+            e = out.setdefault('%s:%d' % (s['id'], r['idx']), {}); n += 1
+            e['dy'] = round(float(e.get('dy', 0) + (d[1] + d[3]) / 2), 1)
+            if r['lines'] == 1:
+                e['dx'] = round(float(e.get('dx', 0) + d[0]), 1)
+                dw = d[2] - d[0]
+                if abs(dw) >= 3 and abs(dw) / max(1, r['n'] - 1) <= 0.07 * r['fs']: e['dw'] = round(float(e.get('dw', 0) + (d[2] - d[0])), 1)
+    print('corrected blocks:', n); return out

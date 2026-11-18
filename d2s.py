@@ -31,7 +31,8 @@ def convert(a):
     print('fonts:', {k: (v['natural'], v['source']) for k, v in table.items()}, '| calibration:', 'yes' if cal else 'NONE (first-line offsets uncorrected; run calib-deck/calib-fit)')
     for sl in json.load(open(a.work + '/slides.json')):
         for w in sl.get('warns', []): print('WARNING slide %s: %s' % (sl['id'], w), file=sys.stderr)
-    pptx_build.build(a.work, a.work + '/deck.pptx', fdb, a.picture_mode, template=a.template)
+    corr = json.load(open(a.corrections)) if getattr(a, 'corrections', None) else None
+    pptx_build.build(a.work, a.work + '/deck.pptx', fdb, a.picture_mode, template=a.template, corrections=corr)
     packs, too_big = bundles.pack(a.work)
     print('deck.pptx %d KB; %d bundles %s; too big for the connector (use a shared Drive folder): %s' % (os.path.getsize(a.work + '/deck.pptx') // 1024, len(packs), [p['kb'] for p in packs], too_big or 'none'))
 
@@ -47,6 +48,10 @@ def calib_fit(a):
     tmp = a.work + '/calib'; table = json.load(open(tmp + '/font_table.json'))
     cal, rep = calibrate.fit(tmp + '/deck', tmp + '/out', a.thumbs, table)
     out = a.o or a.work + '/calibration.json'; json.dump(cal, open(out, 'w'), indent=1); print(json.dumps(rep, indent=1)); print('wrote', out)
+
+def fit_text_cmd(a):
+    prev = json.load(open(a.prev)) if a.prev else None
+    json.dump(imgdiff.fit_text(a.work, a.thumbs, prev), open(a.o, 'w'), indent=1); print('wrote', a.o)
 
 def pdf2png(a):
     os.makedirs(a.out, exist_ok=True)
@@ -149,8 +154,9 @@ def report(a):
     json.dump(rows, open(a.work + '/report_%s.json' % os.path.basename(a.thumbs.rstrip('/')), 'w'), indent=1, default=float)
 
 p = argparse.ArgumentParser(); sub = p.add_subparsers(dest='cmd', required=True)
-c = sub.add_parser('convert'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.add_argument('--gifs'); c.add_argument('--calibration'); c.add_argument('--template'); c.add_argument('--picture-mode', default=C.PICTURE_MODE, choices=['auto', 'embed', 'mask', 'shape']); c.set_defaults(f=convert)
+c = sub.add_parser('convert'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.add_argument('--gifs'); c.add_argument('--calibration'); c.add_argument('--template'); c.add_argument('--corrections'); c.add_argument('--picture-mode', default=C.PICTURE_MODE, choices=['auto', 'embed', 'mask', 'shape']); c.set_defaults(f=convert)
 c = sub.add_parser('calib-deck'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.set_defaults(f=calib_deck)
+c = sub.add_parser('fit-text'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('-o', required=True); c.add_argument('--prev'); c.set_defaults(f=fit_text_cmd)
 c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('-o'); c.set_defaults(f=calib_fit)
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)

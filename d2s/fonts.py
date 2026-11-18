@@ -55,8 +55,15 @@ class FontDB:
     def spc_pct(self, fam, css_lh):
         """CSS line-height (multiple of font size) -> Google line spacing (share of the font's own line height)."""
         return (css_lh or self.natural(fam)) / self.natural(fam)
-    def dy(self, fam, lh, fs):
+    def cell(self, fam, fs, lh, weight, ls=0):
+        """-> [fs, lh, weight, ls, dy_frac, dx_px, dadv_px] measured for this combination, or None"""
+        for c in self.cal.get(fam, {}).get('cells', []):
+            if c[0] == int(round(fs)) and abs(c[1] - (lh or self.natural(fam))) < 0.006 and (weight is None or c[2] == int(weight)) and abs(c[3] - round(ls or 0, 1)) < 0.06: return c
+        return None
+    def dy(self, fam, lh, fs, weight=None, ls=0):
         """Px to move text down so Google's first line lands where Chromium's does."""
+        c = self.cell(fam, fs, lh, weight, ls)          # measured at the exact size/line-height/weight/tracking (see calibrate.fit_sizes)
+        if c: return -c[4] * fs
         tab = self.cal.get(fam, {}).get('dy')
         if not tab: return C.DY_FALLBACK_PER_FS * fs
         tab = sorted(tab); lh = lh or self.natural(fam)

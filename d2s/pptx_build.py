@@ -15,6 +15,7 @@ from .fonts import FontDB
 from . import geomclip
 PT = C.PT_PER_PX
 FDB = FontDB({})          # replaced in build()
+CORR = {}; CUR = [None]    # per-block corrections measured on a previous export (see imgdiff.fit_text); CUR = 'slide id:item index'
 
 A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 def E(tag, parent=None, **attrs):
@@ -88,7 +89,10 @@ def text_body(sp, it, ins, forced):
         at = dict(lang='en-GB', sz=int(round(r['fs'] * PT * 100)), b='1' if FontDB.bold(r['w']) else '0')
         if r.get('it'): at['i'] = '1'
         if r.get('ul'): at['u'] = 'sng'
-        if r.get('ls'): at['spc'] = int(round(r['ls'] * PT * 100))
+        lsv = r.get('ls') or 0; cl = FDB.cell(r['fam'], r['fs'], t['lh'], r['w'], lsv)
+        if cl: lsv -= cl[6]            # measured advance drift per character (Google minus browser)
+        lsv -= t.get('_spc', 0)        # and this block's own measured width residual
+        if abs(lsv) > 0.04: at['spc'] = int(round(lsv * PT * 100))
         e = E(tag, parent, **at)
         if r.get('stroke'):               # outline text: a:ln first, then no fill when the fill is transparent
             ln = E('a:ln', e, w=emu(r['stroke']['w'])); color(ln, r['stroke']['c'], it.get('op', 1))
@@ -154,7 +158,15 @@ def add_shape(slide, it):
         forced = bool(t.get('risky') or (t.get('tight') and t.get('wraps')) or any(r.get('ls') for r in t['runs'] if not r.get('br')))
         if it.get('ell'): kx, ky = 0.1464 * w, 0.1464 * h; ins = [max(0, ins[0] - kx), max(0, ins[1] - ky), max(0, ins[2] - kx), max(0, ins[3] - ky)]
         else: k = C.ROUND_TEXT_INSET * min(radius, min(w, h) / 2); ins = [max(0, v - k) for v in ins]
-        shift = FDB.dy(t['fam'], t['lh'], t['fs'])
+        r0 = next((r for r in t['runs'] if not r.get('br')), None)
+        shift = FDB.dy(t['fam'], t['lh'], t['fs'], r0['w'] if r0 else None, (r0 or {}).get('ls') or 0)
+        cell = FDB.cell(t['fam'], t['fs'], t['lh'], r0['w'] if r0 else None, (r0 or {}).get('ls') or 0) if r0 else None
+        hx = -cell[5] if cell and t['align'] == 'left' else 0         # measured left-edge drift of tracked text (Google minus browser)
+        cr = CORR.get(CUR[0])
+        if cr:                                                          # residual of this very block, measured on the last export
+            shift -= cr.get('dy', 0)
+            if t['align'] == 'left': hx -= cr.get('dx', 0)
+            t = dict(t, _spc=cr.get('dw', 0) / max(1, sum(len(r.get('t', '')) for r in t['runs'] if not r.get('br')) - 1)); it = dict(it, text=t)
         ls_min = min([r.get('ls', 0) for r in t['runs'] if not r.get('br')] + [0])
         single = t['lines'] == 1
         extra = 0
@@ -166,13 +178,14 @@ def add_shape(slide, it):
                 if shift > 0: ins[1] += 2 * shift
                 else: ins[3] += -2 * shift
             else: ins[1] = max(0, ins[1] + shift)
+            if hx: ins[0] = max(0, ins[0] + hx)
             if extra:       # use the padding as slack. (Negative insets for the rest were tested: Google ignores them.)
                 if t['align'] == 'center': ins[0] = ins[2] = 0
                 elif t['align'] == 'left': ins[2] = 0
                 else: ins[0] = 0
         else:                   # free text: move and widen the box itself
             ox = {'left': extra / 2, 'center': 0, 'right': -extra / 2}[t['align']]
-            dx, dyy = rot_vec(ox, shift, rot); cx += dx; cy += dyy; w += extra
+            dx, dyy = rot_vec(ox + hx, shift, rot); cx += dx; cy += dyy; w += extra
     if wa_geom: cx, cy, w, h = wa_geom; ins = [0, 0, 0, 0]
     sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(cx - w / 2), emu(cy - h / 2), max(1, emu(w)), max(1, emu(h)))
     if abs(rot) > 0.01: sp.rotation = rot
@@ -456,8 +469,8 @@ def _fill_placeholder(slide, it, used):
     print('WARNING no free %s placeholder on layout %r: drawn as an ordinary text box' % (it['role'], slide.slide_layout.name), file=sys.stderr)
     return False
 
-def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
-    global FDB; FDB = fdb; ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
+def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None, corrections=None):
+    global FDB, CORR; FDB = fdb; CORR = corrections or {}; ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
     data = json.load(open(src + '/slides.json')); embeds, escale = plan_embeds(data, picture_mode)
     if template:
         prs = Presentation(template)
@@ -484,7 +497,7 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
             else: p = add_picture_shape(slide, it, path, src)
             return p
         for idx, it in enumerate(d['items']):
-            ty = it['type']
+            CUR[0] = '%s:%d' % (d['id'], idx); ty = it['type']
             if ty == 'shape':
                 if it.get('bg') and it.get('grad') and not template: add_shape(slide, it)     # a gradient slide background is a full-slide shape
                 elif it.get('bg') and template: pass                      # the template's background stays
