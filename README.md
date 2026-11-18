@@ -21,6 +21,8 @@ Offline regression: the pitch deck (28 slides) rebuilt with this package plus `e
 sessions and not others; when they do not, a session that has them must do the upload. When they work, the file must sit **inside the
 session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 3.03 MB file uploaded fine and a 6 MB one was refused by the connector (4.2 MB per call); the old 0.85 MB figure was wrong. Hand-typed base64 is not dependable.
 
+**Root vs folder uploads (measured again, 18 Nov, TOAST deck):** the 0.85 MB cap that shows up in some sessions is not a size cap. A Drive `create_file` **without a `parentId`** (My Drive root) refused every file over about 0.7 MB with `Requested entity was not found` (700 KB uploaded, 1 MB and 2 MB did not, same directory, same file-reference form). The same 2.6 MB deck uploaded and converted at once with `parentId` set to a scratch **folder**. So: always pass `parentId` of a folder (create one with `create_file`, `mimeType application/vnd.google-apps.folder`, if there is none). The real ceiling is the connector's 4.2 MB per call (about 3.1 MB of files). Do not shrink pictures or split into many small bundles to dodge a limit that was never there: that cost this session about 16 bundles and 200 hand-copied image requests for a deck that fits in one upload and 5 bundles.
+
 **Other measured constraints:** the Slides MCP rate-limits thumbnail reads ("Expensive read requests per minute", about 27 in a
 minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
 several times; check every download is a valid PNG).
