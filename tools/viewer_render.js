@@ -14,7 +14,7 @@ const ids = deck.order.map((id, i) => [i + 1, id]).filter(([n, id]) => !ONLY || 
         if (u.host === 'viewer.test') {
           let pn = decodeURIComponent(u.pathname); if (pn === '/') pn = '/index.html';
           if (pn === '/project/deck.json') { const d = JSON.parse(JSON.stringify(deck)); d.order = [sid]; d.cover = sid; d.sections = {}; d.designSystems = []; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(d) }); }
-          let m = /^\/_blob\/([0-9a-f]+)/.exec(pn); if (m && BLOB[m[1]]) return f(BLOB[m[1]]);
+          let m = /^\/_blob\/([0-9a-f]+)/.exec(pn); if (m && BLOB[m[1]]) { if (process.env.NOIMG && !/\.woff2?$/.test(BLOB[m[1]])) return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }); return f(BLOB[m[1]]); }
           m = /^\/_fonts\/(.+)$/.exec(pn); if (m) return f(FONTS + m[1]);
           const fp = path.join(ROOT, pn); if (fs.existsSync(fp) && fs.statSync(fp).isFile()) return f(fp);
           return route.fulfill({ status: 404, body: '' });

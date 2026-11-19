@@ -49,6 +49,16 @@ def _best_shift(R, G, box, S):
     c = num / den; oy, ox = np.unravel_index(int(c.argmax()), c.shape)
     return int(gx0 + ox - x0), int(gy0 + oy - y0), float(c.max())
 
+
+def _ink_bbox(path, region, rgb, tol=90):
+    """Bounding box (x0, y0, x1, y1) of the pixels near colour `rgb` inside `region` (x0, y0, x1, y1), or None."""
+    from PIL import Image
+    a = np.asarray(Image.open(path).convert('RGB')).astype(int); x0, y0, x1, y1 = region; sub = a[y0:y1, x0:x1]
+    m = (np.abs(sub - np.array(rgb)).sum(axis=2) < tol)
+    ys, xs = np.nonzero(m)
+    if len(xs) < 50: return None
+    return x0 + int(xs.min()), y0 + int(ys.min()), x0 + int(xs.max()), y0 + int(ys.max())
+
 def fit_blocks(work, thumbs, min_fs=88, search=60, ref='full', min_score=0.3, min_px=2, prev=None):
     """Closed-loop corrections for big text and outline words, measured on whatever sits behind them (photos included).
     -> {'slide id:item index': {dx, dy}} added to `prev`."""
@@ -62,6 +72,17 @@ def fit_blocks(work, thumbs, min_fs=88, search=60, ref='full', min_score=0.3, mi
             if not t or (t.get('fs', 0) < min_fs and not t.get('wa')): continue
             b = t['wa'] if t.get('wa') else dict(x=it['cx'] - it['w'] / 2, y=it['cy'] - it['h'] / 2, w=it['w'], h=it['h'])
             box = (int(max(0, b['x'] - 6)), int(max(0, b['y'] - 6)), int(min(1920, b['x'] + b['w'] + 6)), int(min(1080, b['y'] + b['h'] + 6)))
+            st = next((r.get('stroke') for r in t['runs'] if r.get('stroke') and r['color']['a'] <= 0.01), None) if t.get('wa') else None
+            if st and max(st['c']['r'], st['c']['g'], st['c']['b']) - min(st['c']['r'], st['c']['g'], st['c']['b']) > 100:        # outline word: its ink is one known colour, so measure the ink extent directly (correlating halves of a thin outline locks onto the wrong letter)
+                c = st['c']; reg = (max(0, box[0] - 40), max(0, box[1] - 40), min(1920, box[2] + 40), min(1080, box[3] + 40))
+                vb = _ink_bbox(rp, reg, (c['r'], c['g'], c['b'])); gb = _ink_bbox(gp, reg, (c['r'], c['g'], c['b']))
+                if vb and gb:
+                    dw = (gb[2] - gb[0]) - (vb[2] - vb[0])
+                    dx, dy = (gb[0] - vb[0]) + dw / 2.0, gb[1] - vb[1]      # the box is resized about its centre: narrowing by dw moves the left edge in by dw/2
+                    if max(abs(dx), abs(dy), abs(dw)) < min_px: continue
+                    e = out.setdefault('%s:%d' % (s['id'], idx), {}); e['dx'] = float(e.get('dx', 0) + dx); e['dy'] = float(e.get('dy', 0) + dy)
+                    if abs(dw) >= min_px: e['dw'] = float(e.get('dw', 0) + dw)
+                    continue
             dx, dy, sc = _best_shift(R, G, box, search)
             dw = 0
             cols = np.nonzero(R[box[1]:box[3], box[0]:box[2]].sum(axis=0) > 0)[0]       # ink extent: split it to see drift along the word

@@ -485,3 +485,12 @@ Rules the viewer applies that the converter now follows (all checked against its
 - Picture crop is `data-crop="zoom x% y%"` only; CSS `object-position` is ignored. `crop_rect` in `pptx_build.py` mirrors its `k3()`.
 - `x-icon` is a glyph from its icon font (see above).
 Remaining known differences: outline-word internals (`tr_sun`), one-word wrap differences in a few cards (`textpage`, `m_opps`).
+
+### Fitting against the viewer
+
+`fit-blocks` and `fit-text` take the viewer's render as the reference (`full_NN.png`, plus `noimg_NN.png` rendered with `NOIMG=1`) and the Google
+export's pages as `thumbs`. For outline words (a saturated stroke colour) `fit-blocks` measures the ink extent directly. The word box is resized about
+its centre, so the left-edge residual becomes `dx + dw/2`. Correlating halves of a thin outline locks onto the wrong letter and the width correction
+then runs away (it grew every round). With ink-extent fitting the outline word on `p1` went from 6 px narrow to an exact match.
+Iterating is cheap once the picture bundle decks exist: upload `deck.pptx` only, re-read the bundles for fresh URLs, `replaceImage`, export, report.
+Send each bundle's `replaceImage` as its own call and copy URLs from a fresh read: one wrong character fails the whole batch.
