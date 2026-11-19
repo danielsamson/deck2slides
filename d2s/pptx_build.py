@@ -101,6 +101,7 @@ def text_body(sp, it, ins, forced):
             else: color(e, r['color'], it.get('op', 1))
         else: color(e, r['color'], it.get('op', 1))
         face = FontDB.face(r['fam'], r['w'])
+        if r.get('stroke') and r['color']['a'] <= 0.01 and face.startswith('Inter') and OUTLINE_TIGHT: face = face.replace('Inter', 'Inter Tight', 1)   # WordArt ignores letter-spacing; Inter Tight's own spacing is closest to the tracked originals
         for k in (('a:latin', 'a:ea', 'a:cs') if C.EMIT_EA_CS else ('a:latin',)): E(k, e, typeface=face)
         return e
     last = None; out = []
@@ -130,8 +131,26 @@ def text_body(sp, it, ins, forced):
     rpr(p, first, 'a:endParaRPr')
     return ''.join(o[2] for o in clean if o[0] == 't')
 
-try: WORDART_CAL = json.load(open(os.path.join(os.path.dirname(__file__), 'wordart_cal.json')))
+OUTLINE_TIGHT = False
+OUTLINE_PER_LETTER = True
+try: GLYPH_CAL = json.load(open(os.path.join(os.path.dirname(__file__), 'wordart_cal_glyphs.json')))
+except Exception: GLYPH_CAL = {}
+try: WORDART_CAL = json.load(open(os.path.join(os.path.dirname(__file__), 'wordart_cal_tight.json' if OUTLINE_TIGHT else 'wordart_cal.json')))
 except Exception: WORDART_CAL = {}
+
+def explode_outline(it):
+    """An outline word as one WordArt shape per letter. Slides ignores letter-spacing in WordArt and stretches the word to its box, so a single
+    word cannot reproduce the browser's tracked letters; one shape per letter, sized from each letter's ink, can. -> list of shape items, or None."""
+    t = it.get('text')
+    if not t or not t.get('wa') or not t['wa'].get('chars') or not OUTLINE_PER_LETTER: return None
+    runs = [r for r in t['runs'] if not r.get('br')]
+    if len(runs) != 1 or not (runs[0].get('stroke') and runs[0]['color']['a'] <= 0.01): return None
+    r0 = runs[0]; sw = r0['stroke']['w']; out = []
+    if any(c['c'] not in GLYPH_CAL for c in t['wa']['chars']): return None
+    for c in t['wa']['chars']:
+        wa = dict(x=c['x0'] - sw / 2, y=c['y0'] - sw / 2, w=c['x1'] - c['x0'] + sw, h=c['y1'] - c['y0'] + sw)
+        out.append(dict(it, text=dict(t, runs=[dict(r0, t=c['c'])], wa=wa, glyph=True, lines=1), op=it.get('op', 1)))
+    return out
 
 def add_shape(slide, it):
     t = it.get('text'); op = it.get('op', 1)
@@ -154,9 +173,17 @@ def add_shape(slide, it):
     if t and t.get('wa') and any(r.get('stroke') and r['color']['a'] <= 0.01 for r in t['runs'] if not r.get('br')):
         wa = t['wa']; word = ''.join(r.get('t', '') for r in t['runs'] if not r.get('br')); cal = WORDART_CAL.get(word)
         if not cal: print('WARNING wordart not calibrated: %r (run d2s/wordart_cal.py gen/fit); using the average ratios' % word); cal = dict(rx=1.16, ry=1.11, ox=-0.002, oy=-0.005)
-        bw, bh = wa['w'] / cal['rx'], wa['h'] / cal['ry']; wa_geom = (wa['x'] - cal['ox'] * bw + bw / 2, wa['y'] - cal['oy'] * bh + bh / 2, bw, bh); rot = 0
-        _wc = CORR.get(CUR[0])
-        if _wc: wa_geom = (wa_geom[0] - _wc.get('dx', 0), wa_geom[1] - _wc.get('dy', 0), wa_geom[2] - _wc.get('dw', 0) / cal['rx'], wa_geom[3] - _wc.get('dh', 0) / cal['ry'])     # WordArt: Slides sizes the word by its box, ink = box x (rx, ry), measured per word
+        _wc = CORR.get(CUR[0]) or {}
+        if t.get('glyph'):                                                                # one letter of an outline word: the box is sized from the letter's own ink
+            cal = GLYPH_CAL.get(word) or cal
+            # residuals of the word measured on the last export; without them, the systematic ones (Slides draws these letters ~1.9% taller, ~0.75% higher)
+            _dy = _wc['dy'] if 'dh' in _wc else -0.0075 * wa['h']; _dh = _wc['dh'] if 'dh' in _wc else 0.0186 * wa['h']
+            wx, wy, ww, wh = wa['x'] - _wc.get('dx', 0), wa['y'] - _dy, wa['w'], wa['h'] - _dh
+            bw, bh = ww / cal['rx'], wh / cal['ry']
+            wa_geom = (wx - cal['ox'] * bw + bw / 2, wy - cal['oy'] * bh + bh / 2, bw, bh); rot = 0
+        else:                                                                             # a whole word (fallback)
+            bw, bh = wa['w'] / cal['rx'], wa['h'] / cal['ry']; wa_geom = (wa['x'] - cal['ox'] * bw + bw / 2, wa['y'] - cal['oy'] * bh + bh / 2, bw, bh); rot = 0
+            if _wc: wa_geom = (wa_geom[0] - _wc.get('dx', 0), wa_geom[1] - _wc.get('dy', 0), wa_geom[2] - _wc.get('dw', 0) / cal['rx'], wa_geom[3] - _wc.get('dh', 0) / cal['ry'])
     if t:
         forced = bool(t.get('risky') or (t.get('tight') and t.get('wraps')) or any(r.get('ls') for r in t['runs'] if not r.get('br')))
         if it.get('ell'): kx, ky = 0.1464 * w, 0.1464 * h; ins = [max(0, ins[0] - kx), max(0, ins[1] - ky), max(0, ins[2] - kx), max(0, ins[3] - ky)]
@@ -575,7 +602,14 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None, 
                 elif template and it.get('role') and _fill_placeholder(slide, it, used_ph): pass
                 elif it.get('bg'):
                     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = RGBColor(round(it['fill']['r']), round(it['fill']['g']), round(it['fill']['b']))
-                else: add_shape(slide, it)
+                else:
+                    _ex = explode_outline(it)
+                    if _ex:
+                        _made = [add_shape(slide, g) for g in _ex]; _made = [m for m in _made if m is not None]
+                        if len(_made) > 1:
+                            try: _grp = slide.shapes.add_group_shape(_made); _grp.name = 'Outline word: ' + ''.join(c['c'] for c in it['text']['wa']['chars'])
+                            except Exception as _e: print('WARNING could not group outline letters:', _e)
+                    else: add_shape(slide, it)
             elif ty in ('img', 'clip'): picture(it, 'Picture', None, idx)
             elif ty == 'svg':
                 if it.get('_spec'): add_vector(slide, it, it['_spec'])

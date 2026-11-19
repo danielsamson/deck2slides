@@ -82,9 +82,14 @@ Per-deck state lives next to the deck, never in a session folder: `deck/` (the d
   Blocks that differ get `"force": 1` in the corrections file (writes the browser's line breaks out). Line breaks inside hyphenated words
   (`sense-` / `check`) are kept too. Ignore one-line blocks and words split at apostrophes (false positives).
 - **Browser wrap rule.** The viewer turns `text-wrap: balance` into `pretty`; the preview does the same, so local renders break lines like the viewer.
-- **WordArt ignores letter-spacing (`spc`).** Outline display words are laid out with natural spacing and stretched to the box, so a word
-  with negative tracking comes out with ~7% narrower letters and wider gaps. Ink extents match, glyph shapes cannot. Only per-letter boxes
-  or freeform outlines would fix it (both lose editable text), so these pages stay at 2-5% by pixel count.
+- **WordArt ignores letter-spacing (`spc`) and stretches the word to its box.** A tracked outline word therefore came out with letters ~7% narrower and
+  wider gaps: the same Inter, but it read as another typeface beside the solid words. The letter shapes are right when the box has the word's natural
+  proportions; the spacing is not. Fix in the converter: **one WordArt per letter**, grouped (`Outline word: <text>`), each sized from that letter's own
+  ink (`wa.chars` from extract.cjs, per-glyph calibration in `d2s/wordart_cal_glyphs.json`, `python -m d2s.wordart_cal gen/fit` with the glyph list).
+  Cost: editing such a word means editing letters. `OUTLINE_PER_LETTER = False` returns to one shape per word (calibration `wordart_cal.json`).
+  A new font or weight needs a new glyph calibration. Do not use normal text for outlines: Slides draws it filled and ignores `noFill` and the outline.
+- **Check typeface claims by overlaying the glyphs**, not by comparing widths: render the font file's outlines over the Google render with the box fitted
+  isotropically. (An 8% horizontal squeeze looked like a different face; the overlay showed the shapes were identical.)
 - **Group transforms in inline SVG** (`<g transform="translate(..) scale(1 -1)">`, font glyph paths) are now applied; before, such drawings came out upside down.
 - **Per-corner radii** (`border-radius: 28px 28px 0 0`) are drawn as freeform geometry.
 - **Crop files are named with the box size.** The same photo in two frame shapes used to share one crop, so one frame got the wrong aspect.

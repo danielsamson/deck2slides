@@ -77,16 +77,16 @@ def fit_blocks(work, thumbs, min_fs=88, search=60, ref='full', min_score=0.3, mi
                 c = st['c']; reg = (max(0, box[0] - 40), max(0, box[1] - 40), min(1920, box[2] + 40), min(1080, box[3] + 40))
                 vb = _ink_bbox(rp, reg, (c['r'], c['g'], c['b'])); gb = _ink_bbox(gp, reg, (c['r'], c['g'], c['b']))
                 if vb and gb:
-                    dw = (gb[2] - gb[0]) - (vb[2] - vb[0])
-                    dx, dy = (gb[0] - vb[0]) + dw / 2.0, gb[1] - vb[1]      # the box is resized about its centre: narrowing by dw moves the left edge in by dw/2
-                    if max(abs(dx), abs(dy), abs(dw)) < min_px: continue
+                    dh = (gb[3] - gb[1]) - (vb[3] - vb[1])                  # outline words keep the calibration box shape, so the height alone sets the size
+                    dx, dy = ((gb[0] + gb[2]) - (vb[0] + vb[2])) / 2.0, gb[1] - vb[1]
+                    if max(abs(dx), abs(dy), abs(dh)) < min_px: continue
                     e = out.setdefault('%s:%d' % (s['id'], idx), {}); e['dx'] = float(e.get('dx', 0) + dx); e['dy'] = float(e.get('dy', 0) + dy)
-                    if abs(dw) >= min_px: e['dw'] = float(e.get('dw', 0) + dw)
+                    if abs(dh) >= min_px: e['dh'] = float(e.get('dh', 0) + dh)
                     continue
             dx, dy, sc = _best_shift(R, G, box, search)
             dw = 0
             cols = np.nonzero(R[box[1]:box[3], box[0]:box[2]].sum(axis=0) > 0)[0]       # ink extent: split it to see drift along the word
-            if len(cols) > 120 and (t.get('wa') or t.get('lines', 1) == 1):
+            if len(cols) > 120 and not t.get('wa') and t.get('lines', 1) == 1:
                 x0, x1 = box[0] + int(cols[0]), box[0] + int(cols[-1]); mid = (x0 + x1) // 2
                 lx, ly, ls_ = _best_shift(R, G, (max(0, x0 - 4), box[1], mid, box[3]), search)
                 rx, ry, rs_ = _best_shift(R, G, (mid, box[1], min(1920, x1 + 4), box[3]), search)
