@@ -36,7 +36,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     s = s.replace(/<img([^>]*?)src="([^"]+)"([^>]*)>/g, (m, a, src, b) => { const f = rep.get(m); if (!f) return m;
       const clip = /data-video=/.test(m) ? ' data-clip="' + path.basename(f).replace(/\.\w+$/, '') + '"' : '';
       return '<img' + a + 'src="file://' + f + '"' + clip + b + '>'; });
-    s = s.replace(/<x-icon name="([^"]+)"([^>]*)><\/x-icon>/g, (m, name, a) => ICONS[name] ? '<x-icon name="' + name + '"' + a + '>' + ICONS[name] + '</x-icon>' : (console.log('UNKNOWN ICON', id, name, '(add it to icons.json)'), m));
+    s = s.replace(/<x-icon name="([^"]+)"([^>]*)><\/x-icon>/g, (m, name, a) => ICONS[name] ? '<x-icon name="' + name + '"' + a + '>' + (/width\s*:/.test(a) ? ICONS[name].replace(/^<svg width="[^"]*" height="[^"]*"/, '<svg style="display:block;width:100%;height:100%"') : ICONS[name]) + '</x-icon>' : (console.log('UNKNOWN ICON', id, name, '(add it to icons.json)'), m));
     html += s;
   }
   fs.writeFileSync(path.join(OUT, 'preview.html'), html);

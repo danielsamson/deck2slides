@@ -458,3 +458,6 @@ is no resampling: position, size and line weight match the browser. As pictures 
 - Keep an icons page in every deck that uses icons (TOAST: `ds_icons`), so the set in use is visible and checked on each export.
 - Corrections (`fit-blocks`) now also measure drift along a word (`dw`, applied as letter-spacing) and `dx` is honoured for right and
   centre aligned text. `d2s.py patch` accepts `widened` matching for decks whose boxes already carry corrections.
+- An `x-icon` is sized by its own `style` (28 px in a 48 px circle). The stored markup says 32 px; the converter must make the inner
+  drawing fill the box (`width:100%; height:100%`). Left at 32 px it came out 14% too big and 2 px right and down of where the Claude
+  viewer draws it, and Google matched that wrong render. Check icon size and centring against the viewer, not only against the local render.
