@@ -15,7 +15,7 @@ from .fonts import FontDB
 from . import geomclip
 PT = C.PT_PER_PX
 FDB = FontDB({})          # replaced in build()
-CORR = {}; CUR = [None]    # per-block corrections measured on a previous export (see imgdiff.fit_text); CUR = 'slide id:item index'
+CORR = {}; CUR = [None]; CROPDIR = ['crops']    # per-block corrections measured on a previous export (see imgdiff.fit_text); CUR = 'slide id:item index'
 
 A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 def E(tag, parent=None, **attrs):
@@ -153,7 +153,9 @@ def add_shape(slide, it):
     if t and t.get('wa') and any(r.get('stroke') and r['color']['a'] <= 0.01 for r in t['runs'] if not r.get('br')):
         wa = t['wa']; word = ''.join(r.get('t', '') for r in t['runs'] if not r.get('br')); cal = WORDART_CAL.get(word)
         if not cal: print('WARNING wordart not calibrated: %r (run d2s/wordart_cal.py gen/fit); using the average ratios' % word); cal = dict(rx=1.16, ry=1.11, ox=-0.002, oy=-0.005)
-        bw, bh = wa['w'] / cal['rx'], wa['h'] / cal['ry']; wa_geom = (wa['x'] - cal['ox'] * bw + bw / 2, wa['y'] - cal['oy'] * bh + bh / 2, bw, bh); rot = 0     # WordArt: Slides sizes the word by its box, ink = box x (rx, ry), measured per word
+        bw, bh = wa['w'] / cal['rx'], wa['h'] / cal['ry']; wa_geom = (wa['x'] - cal['ox'] * bw + bw / 2, wa['y'] - cal['oy'] * bh + bh / 2, bw, bh); rot = 0
+        _wc = CORR.get(CUR[0])
+        if _wc: wa_geom = (wa_geom[0] - _wc.get('dx', 0), wa_geom[1] - _wc.get('dy', 0), wa_geom[2] - _wc.get('dw', 0) / cal['rx'], wa_geom[3] - _wc.get('dh', 0) / cal['ry'])     # WordArt: Slides sizes the word by its box, ink = box x (rx, ry), measured per word
     if t:
         forced = bool(t.get('risky') or (t.get('tight') and t.get('wraps')) or any(r.get('ls') for r in t['runs'] if not r.get('br')))
         if it.get('ell'): kx, ky = 0.1464 * w, 0.1464 * h; ins = [max(0, ins[0] - kx), max(0, ins[1] - ky), max(0, ins[2] - kx), max(0, ins[3] - ky)]
@@ -280,7 +282,15 @@ def _placeholder_png():
         import io; b = io.BytesIO(); Image.new('RGBA', (1, 1), (255, 255, 255, 0)).save(b, 'PNG'); _PLACEHOLDER = b.getvalue()
     return _PLACEHOLDER
 
-def _embed_data(path, pw, ph, method, scale):
+def opos_frac(opos):
+    """CSS object-position (computed, e.g. '0% 50%') -> (fx, fy) in 0..1. Percentages only; anything else is centred."""
+    try:
+        v = (opos or '50% 50%').split()
+        f = [float(x[:-1]) / 100 if x.endswith('%') else 0.5 for x in v[:2]]
+        return (f + [0.5, 0.5])[:2]
+    except Exception: return [0.5, 0.5]
+
+def _embed_data(path, pw, ph, method, scale, opos=None):
     """-> (bytes, mime, srcRect (l,t,r,b fractions) or None) for a picture shown in a pw x ph box, or None (GIFs stay placeholders)."""
     if path.lower().endswith('.gif'): return None
     import io
@@ -288,8 +298,9 @@ def _embed_data(path, pw, ph, method, scale):
         im = im0.convert('RGBA') if (im0.mode in ('RGBA', 'LA') or 'transparency' in im0.info or im0.mode == 'P') else im0.convert('RGB'); W, H = im.size
     crop = None; cw, ch = W, H
     if method == 'CENTER_CROP' and abs((pw / ph) / (W / H) - 1) > 0.005:
-        if (pw / ph) > (W / H): ch = W * ph / pw; t = (H - ch) / 2; crop = (0.0, t / H, 0.0, t / H)
-        else: cw = H * pw / ph; l = (W - cw) / 2; crop = (l / W, 0.0, l / W, 0.0)
+        fx, fy = opos_frac(opos)
+        if (pw / ph) > (W / H): ch = W * ph / pw; t = (H - ch) * fy; crop = (0.0, t / H, 0.0, (H - ch - t) / H)
+        else: cw = H * pw / ph; l = (W - cw) * fx; crop = (l / W, 0.0, (W - cw - l) / W, 0.0)
     k = min(1.0, pw * scale / cw)
     if k < 0.999: im = im.resize((max(1, round(W * k)), max(1, round(H * k))), Image.LANCZOS)
     b = io.BytesIO()
@@ -310,7 +321,7 @@ def plan_embeds(data, picture_mode):
         out = []
         for sid, i, it in cands:
             fit = 'fill' if it['type'] == 'svg' else it.get('fit', 'fill'); method = 'CENTER_CROP' if fit in ('cover', 'fill') else 'CENTER_INSIDE'
-            e = _embed_data(it['src'], it['w'], it['h'], method, scale)
+            e = _embed_data(it['src'], it['w'], it['h'], method, scale, it.get('opos'))
             if e: out.append(((it['src'], round(it['w']), round(it['h']), method), len(e[0]), it.get('op', 1) < 0.999, sid, i))
         return out
     scale = C.EMBED_SCALE
@@ -364,7 +375,20 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     if fit == 'contain': s = min(cw / nw, ch / nh); pw, ph = nw * s, nh * s
     else: pw, ph = cw, ch
     method = 'CENTER_CROP' if fit in ('cover', 'fill') and abs(1 - (pw / ph) / (nw / nh)) > 0.005 else 'CENTER_INSIDE'
-    emb = _embed_data(path, pw, ph, method, embed_scale) if embed_scale else None
+    emb = _embed_data(path, pw, ph, method, embed_scale, it.get('opos')) if embed_scale else None
+    fx, fy = opos_frac(it.get('opos'))
+    if not emb and method == 'CENTER_CROP' and (abs(fx - 0.5) > 0.01 or abs(fy - 0.5) > 0.01):
+        # Slides' replaceImage can only crop about the centre: cut the picture to the box shape here (object-position honoured), then fit it inside
+        import hashlib as _h
+        with Image.open(path) as _im:
+            _im = _im.convert('RGBA') if _im.mode in ('RGBA', 'LA', 'P') else _im.convert('RGB'); W_, H_ = _im.size
+            if (pw / ph) > (W_ / H_): ch_ = W_ * ph / pw; t_ = (H_ - ch_) * fy; box = (0, round(t_), W_, round(t_ + ch_))
+            else: cw_ = H_ * pw / ph; l_ = (W_ - cw_) * fx; box = (round(l_), 0, round(l_ + cw_), H_)
+            _c = _im.crop(box); os.makedirs(CROPDIR[0], exist_ok=True)
+            ext = 'png' if _c.mode == 'RGBA' else 'jpg'
+            cp = '%s/crop_%s_%d_%d.%s' % (CROPDIR[0], _h.sha1(open(path, 'rb').read()).hexdigest()[:8], round(fx * 100), round(fy * 100), ext)
+            _c.save(cp, quality=95) if ext == 'jpg' else _c.save(cp)
+        path = cp; method = 'CENTER_INSIDE'
     key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]
     if not emb: a = ASSETS.setdefault(key, dict(file=path, mime='image/gif' if path.lower().endswith('.gif') else 'image/jpeg' if path.lower().endswith(('.jpg', '.jpeg')) else 'image/png', maxw=0))
     if not emb: a['maxw'] = max(a['maxw'], pw)
@@ -472,7 +496,7 @@ def _fill_placeholder(slide, it, used):
     return False
 
 def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None, corrections=None):
-    global FDB, CORR; FDB = fdb; CORR = corrections or {}; ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
+    global FDB, CORR; FDB = fdb; CORR = corrections or {}; CROPDIR[0] = os.path.join(os.path.dirname(os.path.abspath(out)), 'crops'); ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
     data = json.load(open(src + '/slides.json')); embeds, escale = plan_embeds(data, picture_mode)
     if template:
         prs = Presentation(template)
