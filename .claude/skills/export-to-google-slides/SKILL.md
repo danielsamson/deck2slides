@@ -54,3 +54,24 @@ Use this when asked to "publish", "export" or "put it on Google Slides". Never h
   residual to what is already in the deck).
 - `x-icon` glyphs come from the viewer's icon font (`js/anthropicons.woff2`, rebuilt into `js/icons.json` by `tools/build_icons.py`). Never
   hand-draw or stroke icons: compare against the viewer's own code (`artifact-type/app.js` in the Slides artifact), not a local render.
+
+## The repeatable loop for any deck (read this first for a second deck)
+
+Per-deck state lives next to the deck, never in a session folder: `deck/` (the deck copy), `map.json` (picture id -> file), `calibration*.json`,
+`blocks*.json` (the corrections, one file per round; each is the previous plus the new residuals), and one `work_vN/` per export.
+
+1. **Reference render.** Read the artifact (`Artifact read` with `paths`, plus `page: true` for the page html). Then
+   `python tools/viewer_setup.py <artifact-files dir> <page.html> <root>`, `python tools/blobs_map.py <root>/project/slides map.json id=font > blobs.json`,
+   `NODE_PATH=$(npm root -g) node tools/viewer_render.js <root> <shots> blobs.json 4` (and again with `NOIMG=1` into another folder). This is the
+   truth the Google deck is judged against, not the converter's own browser.
+2. **Convert.** `D2S_CHROMIUM=/opt/pw-browsers/chromium python d2s.py convert deck work_vN --assets map.json --calibration <cal> --corrections <blocks>`.
+   Fix converter differences by making `work_vN/full_NN.png` equal the viewer shots first (`d2s.py report work_vN <shots as p<N>.png> --ref full`): no upload needed.
+3. **Upload.** Main `deck.pptx` into a Drive folder (`parentId`), always. Picture bundles (`pack/pack_NN.pptx`) are uploaded once and kept: when
+   `manifest.json` placeholder tags are unchanged, reuse them. Re-read each bundle for fresh image URLs (they last about 30 minutes).
+4. **Place pictures.** `replaceImage` per bundle, one call each, URLs copied from the fresh read (`d2s.py requests` builds the list from tags + urls).
+5. **Measure.** Export PDF, `d2s.py pdf2png`, `d2s.py report <viewer work dir> <google pages> --ref full`, `d2s.py visdiff` for the worst pages. Judge
+   by overlays, not only percentages (hairline outlines inflate them).
+6. **Correct.** `fit-blocks` (big words, outline words by ink extent) then `fit-text` (small text), both with `--prev` the last blocks file; convert; repeat from 3 (main deck only).
+7. **After a person edits the Google deck:** stop re-exporting; use `d2s.py patch` for position-only fixes.
+8. **Checks that have each caught a real bug:** zoom on 60x60 px crops of icons; compare ink extents of outline words; look at `p3kin`-style
+   `nowrap` rows; run `pytest` (the freeform-icon test exists because a freeform beside a rectangle draws a box).
