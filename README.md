@@ -461,3 +461,11 @@ is no resampling: position, size and line weight match the browser. As pictures 
 - An `x-icon` is sized by its own `style` (28 px in a 48 px circle). The stored markup says 32 px; the converter must make the inner
   drawing fill the box (`width:100%; height:100%`). Left at 32 px it came out 14% too big and 2 px right and down of where the Claude
   viewer draws it, and Google matched that wrong render. Check icon size and centring against the viewer, not only against the local render.
+
+### Icons come from the viewer's own font
+
+`x-icon` is not an SVG in the Claude Slides viewer: it draws a glyph from its `anthropicons` font as `<svg viewBox="0 0 100 100"><text x=50 y=54
+text-anchor=middle dominant-baseline=central font-size=90>` (search `mc-anthropicons` in the artifact's `artifact-type/app.js`). Strokes in the
+font are fine outlines, roughly half the weight of the stroked icons this repo used before, so Google showed them "really thick". `js/icons.json`
+is now generated from that font (`js/anthropicons.woff2`, `python tools/build_icons.py`), so the converter draws the same shapes the viewer draws.
+When the icon set looks wrong, read the viewer's own code before calibrating against a local render.

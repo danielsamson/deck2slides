@@ -52,3 +52,5 @@ Use this when asked to "publish", "export" or "put it on Google Slides". Never h
   URL fails only that call.
 - Do not stack a correction on one that was never applied: re-measure on the export you are looking at (`fit-blocks --prev` adds the
   residual to what is already in the deck).
+- `x-icon` glyphs come from the viewer's icon font (`js/anthropicons.woff2`, rebuilt into `js/icons.json` by `tools/build_icons.py`). Never
+  hand-draw or stroke icons: compare against the viewer's own code (`artifact-type/app.js` in the Slides artifact), not a local render.
