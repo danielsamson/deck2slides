@@ -19,7 +19,7 @@ def _centre(el):
     w = s['width']['magnitude'] * t.get('scaleX', 1); h = s['height']['magnitude'] * t.get('scaleY', 1)
     return (t.get('translateX', 0) + w / 2) / EMU_PER_PX, (t.get('translateY', 0) + h / 2) / EMU_PER_PX, w / EMU_PER_PX, h / EMU_PER_PX
 
-def plan(slides, live, corrections, min_px=2, tol_c=14, tol_s=0.06):
+def plan(slides, live, corrections, min_px=2, tol_c=14, tol_s=0.06, widened=False):
     """-> (requests, report). report rows: (key, status, detail)."""
     pages = {p['objectId']: p for p in live.get('slides', [])}; by_id = {s['id']: s for s in slides}
     reqs, rep = [], []
@@ -34,7 +34,11 @@ def plan(slides, live, corrections, min_px=2, tol_c=14, tol_s=0.06):
         for el in page.get('pageElements', []):
             g = _centre(el)
             if not g: continue
-            if abs(g[0] - it['cx']) <= tol_c and abs(g[1] - it['cy']) <= tol_c and abs(g[2] - it['w']) <= tol_s * it['w'] + 4 and abs(g[3] - it['h']) <= tol_s * it['h'] + 4:
+            if widened:        # export already carried corrections: the text box was moved and widened, so match on a looser envelope
+                ok = abs(g[0] - it['cx']) <= 90 and abs(g[1] - it['cy']) <= 40 and -4 <= g[2] - it['w'] <= 0.6 * it['w'] + 80 and abs(g[3] - it['h']) <= tol_s * it['h'] + 4
+            else:
+                ok = abs(g[0] - it['cx']) <= tol_c and abs(g[1] - it['cy']) <= tol_c and abs(g[2] - it['w']) <= tol_s * it['w'] + 4 and abs(g[3] - it['h']) <= tol_s * it['h'] + 4
+            if ok:
                 hits.append(el)
         if len(hits) != 1: rep.append((key, 'skipped', '%d elements match' % len(hits))); continue
         el = hits[0]; t = dict(el['transform']); t['translateX'] = t.get('translateX', 0) - dx * EMU_PER_PX; t['translateY'] = t.get('translateY', 0) - dy * EMU_PER_PX; t['unit'] = 'EMU'

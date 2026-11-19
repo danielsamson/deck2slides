@@ -167,7 +167,7 @@ def add_shape(slide, it):
         cr = CORR.get(CUR[0])
         if cr:                                                          # residual of this very block, measured on the last export
             shift -= cr.get('dy', 0)
-            if t['align'] == 'left': hx -= cr.get('dx', 0)
+            if t['align'] == 'left' or not (fill or stroke or grd): hx -= cr.get('dx', 0)
             t = dict(t, _spc=cr.get('dw', 0) / max(1, sum(len(r.get('t', '')) for r in t['runs'] if not r.get('br')) - 1)); it = dict(it, text=t)
         ls_min = min([r.get('ls', 0) for r in t['runs'] if not r.get('br')] + [0])
         single = t['lines'] == 1

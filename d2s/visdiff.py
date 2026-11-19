@@ -63,6 +63,16 @@ def fit_blocks(work, thumbs, min_fs=88, search=60, ref='full', min_score=0.3, mi
             b = t['wa'] if t.get('wa') else dict(x=it['cx'] - it['w'] / 2, y=it['cy'] - it['h'] / 2, w=it['w'], h=it['h'])
             box = (int(max(0, b['x'] - 6)), int(max(0, b['y'] - 6)), int(min(1920, b['x'] + b['w'] + 6)), int(min(1080, b['y'] + b['h'] + 6)))
             dx, dy, sc = _best_shift(R, G, box, search)
-            if sc < min_score or max(abs(dx), abs(dy)) < min_px: continue
+            dw = 0
+            cols = np.nonzero(R[box[1]:box[3], box[0]:box[2]].sum(axis=0) > 0)[0]       # ink extent: split it to see drift along the word
+            if len(cols) > 120 and (t.get('wa') or t.get('lines', 1) == 1):
+                x0, x1 = box[0] + int(cols[0]), box[0] + int(cols[-1]); mid = (x0 + x1) // 2
+                lx, ly, ls_ = _best_shift(R, G, (max(0, x0 - 4), box[1], mid, box[3]), search)
+                rx, ry, rs_ = _best_shift(R, G, (mid, box[1], min(1920, x1 + 4), box[3]), search)
+                if min(ls_, rs_) >= min_score:
+                    dw = rx - lx; al = (t.get('align') or 'left') if not t.get('wa') else 'left'
+                    dx = lx if al == 'left' else rx if al == 'right' else (lx + rx) / 2; dy = (ly + ry) / 2; sc = max(sc, min(ls_, rs_))
+            if sc < min_score or max(abs(dx), abs(dy), abs(dw)) < min_px: continue
             e = out.setdefault('%s:%d' % (s['id'], idx), {}); e['dx'] = float(e.get('dx', 0) + dx); e['dy'] = float(e.get('dy', 0) + dy)
+            if abs(dw) >= min_px: e['dw'] = float(e.get('dw', 0) + dw)
     return out
