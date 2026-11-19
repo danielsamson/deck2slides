@@ -28,7 +28,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
   fs.mkdirSync(path.join(OUT, 'svg'), { recursive: true });
   const deck = JSON.parse(fs.readFileSync(path.join(root, 'deck.json'), 'utf8')); const css = fs.readFileSync(path.join(root, 'deck.css'), 'utf8');
   const fonts = Object.values(deck.faces).map(f => '<link rel="stylesheet" href="' + f.href + '">').join('');
-  let html = '<!doctype html><meta charset="utf-8">' + fonts + '<style>*{margin:0}body{background:#444}section{position:relative;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;margin-bottom:20px}hr{border:0}img{display:block}aside{display:none}x-shape{display:block}x-shape[kind=ellipse]{border-radius:50%}x-icon{display:block}section>*{position:relative}' + css + '\n*{animation:none !important}img:not([data-crop]){object-position:50% 50% !important}</style>' + '<script>document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("body *").forEach(e=>{if(getComputedStyle(e).textWrapStyle==="balance")e.style.textWrapStyle="auto"})});document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll("img[data-crop]").forEach(i=>{const m=/^\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%/.exec(i.getAttribute("data-crop"));if(m){i.style.objectFit="cover";i.style.objectPosition=m[2]+"% "+m[3]+"%"}}))</script>';
+  let html = '<!doctype html><meta charset="utf-8">' + fonts + '<style>*{margin:0}body{background:#444}section{position:relative;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;margin-bottom:20px}hr{border:0}img{display:block}aside{display:none}x-shape{display:block}x-shape[kind=ellipse]{border-radius:50%}x-icon{display:block}section>*{position:relative}' + css + '\n*{animation:none !important}img:not([data-crop]){object-position:50% 50% !important}</style>' + '<script>document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("body *").forEach(e=>{if(getComputedStyle(e).textWrapStyle==="balance")e.style.textWrapStyle="pretty"})});document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll("img[data-crop]").forEach(i=>{const m=/^\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%/.exec(i.getAttribute("data-crop"));if(m){i.style.objectFit="cover";i.style.objectPosition=m[2]+"% "+m[3]+"%"}}))</script>';
   for (const id of deck.order) {
     let s = fs.readFileSync(path.join(root, 'slides', id + '.html'), 'utf8');
     const imgs = [...s.matchAll(/<img([^>]*?)src="([^"]+)"([^>]*)>/g)]; const rep = new Map();
@@ -129,7 +129,15 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
             rg.setStart(m, k.index); rg.setEnd(m, k.index + k[0].length); const rc = rg.getClientRects()[0];
             let sep = /\s/.test(txt.slice(pos, k.index)) ? ' ' : '';
             if (rc && flat) { if (lastTop !== null && rc.top > lastTop + rc.height * 0.5) { if (cRight - (prevRight + parseFloat(cs.fontSize) * 0.28 + rc.width) > -0.03 * cW) risky = true; sep = '\u000b'; wraps++; lines++; maxChars = Math.max(maxChars, cur); cur = 0; } lastTop = rc.top; prevRight = rc.right; maxRight = Math.max(maxRight, rc.right); }
-            out += sep + k[0]; cur += k[0].length + 1; pos = k.index + k[0].length;
+            let word = k[0];
+            if (flat && /.-./.test(word) && rg.getClientRects().length > 1) {        // line broken inside a hyphenated word (sense-/check): keep that break
+              for (let h = word.indexOf('-') + 1; h > 0 && h < word.length; h = word.indexOf('-', h) + 1 || -1) {
+                const r2 = document.createRange(); r2.setStart(m, k.index + h - 1); r2.setEnd(m, k.index + h); const r3 = document.createRange(); r3.setStart(m, k.index + h); r3.setEnd(m, k.index + h + 1);
+                const a2 = r2.getClientRects()[0], b2 = r3.getClientRects()[0];
+                if (a2 && b2 && b2.top > a2.top + a2.height * 0.5) { word = word.slice(0, h) + '\u000b' + word.slice(h); wraps++; lines++; lastTop = b2.top; const rs = rg.getClientRects(); prevRight = rs[rs.length - 1].right; break; }
+              }
+            }
+            out += sep + word; cur += k[0].length + 1; pos = k.index + k[0].length;
           }
           if (/\s$/.test(txt) && out) out += ' ';
           push(out, m.parentElement);
@@ -173,6 +181,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         let radius = rpct ? Math.min(g.w, g.h) * Math.min(rv, 50) / 100 : rv;
         const gwarn = m => warns.push(el.tagName.toLowerCase() + ': ' + m); const grad = gradOf(cs, g, gwarn), cpath = clipOf(cs, g, gwarn), ov = ovOf(el, sec, R, g);
         if (ov.inheritR > radius) radius = ov.inheritR;
+        let radii = null; { const rr = ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map(k => cs['border' + k + 'Radius']); if (!rr.some(v => v.includes('%')) && new Set(rr).size > 1) radii = rr.map(v => Math.min(parseFloat(v) || 0, g.w / 2, g.h / 2)); }
         const ovclip = ov.out.length ? ov.out : null;
         const sh = shadow(cs);
         if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op }); continue; }
@@ -182,7 +191,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         } else {
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
           if ((bg && bg.a > 0) || grad || uniform || hasText) {
-            const it = { type: 'shape', ...g, op, radius, ell, fill: bg && bg.a > 0 && !grad ? bg : null, grad, cpath, ovclip, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null, cmpd: bst.l === 'double' ? 'dbl' : null } : null, shadow: sh, pad, bw };
+            const it = { type: 'shape', ...g, op, radius, radii, ell, fill: bg && bg.a > 0 && !grad ? bg : null, grad, cpath, ovclip, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null, cmpd: bst.l === 'double' ? 'dbl' : null } : null, shadow: sh, pad, bw };
             if (hasText) { it.text = textOf(el, cs, g); if (el.dataset.role) it.role = el.dataset.role; }
             items.push(it);
           }
@@ -228,11 +237,13 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         for (const e of svg.querySelectorAll('*')) {
           const t = e.tagName.toLowerCase(); if (t === 'title' || t === 'desc') continue;
           if (!['path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'g'].includes(t)) return null;
-          if (t === 'g') continue; const cs = getComputedStyle(e);
+          if (t === 'g') { if (e.getAttribute('mask') || e.getAttribute('clip-path') || e.getAttribute('filter')) return null; continue; } const cs = getComputedStyle(e);
           if (cs.visibility === 'hidden' || cs.display === 'none') continue;
           const at = {}; for (const a of e.attributes) at[a.name] = a.value;
-          if (at.transform || at.mask || at['clip-path'] || at.filter) return null;
-          els.push({ t, at, sw: parseFloat(cs.strokeWidth) || 0, stroke: cs.stroke, fill: cs.fill, cap: cs.strokeLinecap, join: cs.strokeLinejoin, op: +cs.opacity, fo: +cs.fillOpacity, so: +cs.strokeOpacity });
+          if (at.mask || at['clip-path'] || at.filter) return null;
+          let m = new DOMMatrix(); const chain = []; for (let x = e; x && x !== svg; x = x.parentNode) chain.unshift(x);
+          for (const x of chain) if (x.transform && x.transform.baseVal && x.transform.baseVal.numberOfItems) { const c = x.transform.baseVal.consolidate().matrix; m = m.multiply(new DOMMatrix([c.a, c.b, c.c, c.d, c.e, c.f])); }
+          els.push({ t, at, m: [m.a, m.b, m.c, m.d, m.e, m.f], sw: parseFloat(cs.strokeWidth) || 0, stroke: cs.stroke, fill: cs.fill, cap: cs.strokeLinecap, join: cs.strokeLinejoin, op: +cs.opacity, fo: +cs.fillOpacity, so: +cs.strokeOpacity });
         }
         return { vb, els, color: getComputedStyle(svg).color };
       }, it.id);

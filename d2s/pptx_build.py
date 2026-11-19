@@ -108,7 +108,7 @@ def text_body(sp, it, ins, forced):
         if r.get('br'): out.append(('br', last)); continue
         parts = r['t'].split('\x0b'); last = r
         for i, part in enumerate(parts):
-            if i: out.append(('br', r) if forced else ('t', r, ' '))
+            if i: out.append(('br', r) if forced else ('t', r, '' if parts[i - 1].endswith('-') else ' '))
             if part: out.append(('t', r, part))
     # tidy spaces around breaks and at the ends
     clean = []
@@ -166,6 +166,7 @@ def add_shape(slide, it):
         cell = FDB.cell(t['fam'], t['fs'], t['lh'], r0['w'] if r0 else None, (r0 or {}).get('ls') or 0) if r0 else None
         hx = -cell[5] if cell and t['align'] == 'left' else 0         # measured left-edge drift of tracked text (Google minus browser)
         cr = CORR.get(CUR[0])
+        if cr and cr.get('force'): forced = True                        # lines break differently in Slides (wrapcheck): write the browser's breaks out
         if cr:                                                          # residual of this very block, measured on the last export
             shift -= cr.get('dy', 0)
             if t['align'] == 'left' or not (fill or stroke or grd): hx -= cr.get('dx', 0)
@@ -395,7 +396,7 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
             l_, t_, cw_, ch_ = crop_rect(W_, H_, pw, ph, fx, fy, it.get('zoom', 1)); box = (round(l_), round(t_), round(l_ + cw_), round(t_ + ch_))
             _c = _im.crop(box); os.makedirs(CROPDIR[0], exist_ok=True)
             ext = 'png' if _c.mode == 'RGBA' else 'jpg'
-            cp = '%s/crop_%s_%d_%d_%d.%s' % (CROPDIR[0], _h.sha1(open(path, 'rb').read()).hexdigest()[:8], round(fx * 100), round(fy * 100), round((it.get('zoom', 1) or 1) * 100), ext)
+            cp = '%s/crop_%s_%d_%d_%d_%dx%d.%s' % (CROPDIR[0], _h.sha1(open(path, 'rb').read()).hexdigest()[:8], round(fx * 100), round(fy * 100), round((it.get('zoom', 1) or 1) * 100), round(pw), round(ph), ext)      # box size in the name: the same picture in two box shapes needs two crops
             _c.save(cp, quality=95) if ext == 'jpg' else _c.save(cp)
         path = cp; method = 'CENTER_INSIDE'
     key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]

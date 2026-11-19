@@ -75,3 +75,22 @@ Per-deck state lives next to the deck, never in a session folder: `deck/` (the d
 7. **After a person edits the Google deck:** stop re-exporting; use `d2s.py patch` for position-only fixes.
 8. **Checks that have each caught a real bug:** zoom on 60x60 px crops of icons; compare ink extents of outline words; look at `p3kin`-style
    `nowrap` rows; run `pytest` (the freeform-icon test exists because a freeform beside a rectangle draws a box).
+
+## Lessons from the second measurement round (each one was a real bug or limit)
+
+- **Wrap check.** After an export, `python -m d2s.wrapcheck <work> <g.pdf>` compares each text block's line starts in the Google PDF with the browser's.
+  Blocks that differ get `"force": 1` in the corrections file (writes the browser's line breaks out). Line breaks inside hyphenated words
+  (`sense-` / `check`) are kept too. Ignore one-line blocks and words split at apostrophes (false positives).
+- **Browser wrap rule.** The viewer turns `text-wrap: balance` into `pretty`; the preview does the same, so local renders break lines like the viewer.
+- **WordArt ignores letter-spacing (`spc`).** Outline display words are laid out with natural spacing and stretched to the box, so a word
+  with negative tracking comes out with ~7% narrower letters and wider gaps. Ink extents match, glyph shapes cannot. Only per-letter boxes
+  or freeform outlines would fix it (both lose editable text), so these pages stay at 2-5% by pixel count.
+- **Group transforms in inline SVG** (`<g transform="translate(..) scale(1 -1)">`, font glyph paths) are now applied; before, such drawings came out upside down.
+- **Per-corner radii** (`border-radius: 28px 28px 0 0`) are drawn as freeform geometry.
+- **Crop files are named with the box size.** The same photo in two frame shapes used to share one crop, so one frame got the wrong aspect.
+- **Width corrections** (`dw`) larger than ~8% of the text are mis-measurements and are no longer accepted by `fit-text`.
+- **Picture URLs from a bundle read are single-use-ish and short-lived** (some fail with "Access to the provided image was forbidden" after ~10 minutes
+  or a repeat use). Re-read the bundle right before `replaceImage`; if a batch fails, nothing in it was applied.
+- **Never `replaceImage` twice on the same element**: the second call fits inside the first result's size. To change a picture later, put the
+  element back with `updatePageElementTransform` ABSOLUTE (scale = box / 3,000,000 EMU; for a rotated picture use rotation in scale/shear, centre kept).
+- The picture URLs from a bundle read can be fetched anonymously with curl (useful to check what a bundle really holds).

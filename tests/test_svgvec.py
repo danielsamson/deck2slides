@@ -49,3 +49,18 @@ def test_vector_shape_has_one_geometry_only():
     spPr = sp._element.spPr
     assert len(spPr.findall(qn('a:custGeom'))) == 1 and not spPr.findall(qn('a:prstGeom'))
     ln = spPr.find(qn('a:ln')); assert ln.get('cap') == 'rnd'
+
+
+def test_group_transform_applied():
+    """A flipped group (font glyph paths: translate + scale(1 -1)) must come out the right way up."""
+    vec = {'vb': [0, 0, 100, 100], 'els': [{'t': 'path', 'at': {'d': 'M0 0L50 0L50 20Z'}, 'm': [1, 0, 0, -1, 0, 100],
+           'sw': 2, 'stroke': 'rgb(0, 0, 0)', 'fill': 'none', 'op': 1, 'fo': 1, 'so': 1}]}
+    s = V.build(vec, 100, 100)
+    assert s['paths'][0]['cmds'][0] == ('M', 0.0, 1.0) and s['paths'][0]['cmds'][2] == ('L', 0.5, 0.8)
+
+
+def test_rrect_per_corner_radii():
+    from d2s import geomclip
+    p = geomclip.rrect(0, 0, 100, 60, 0, [20, 20, 0, 0])
+    assert p.contains(geomclip.Polygon([(50, 55), (60, 55), (60, 58)]))          # bottom stays square
+    assert not p.contains(geomclip.Polygon([(0.5, 0.5), (1, 0.5), (1, 1)]))      # top-left is cut away

@@ -145,6 +145,12 @@ def build(vec, w, h):
     for e in vec['els']:
         cmds = element_cmds(e)
         if not cmds: return None
+        m = e.get('m')                                                                     # transform of the element and its groups
+        if m and list(m) != [1, 0, 0, 1, 0, 0]:
+            a_, b_, c_, d_, e_, f_ = m
+            tp = lambda x, y: (a_ * x + c_ * y + e_, b_ * x + d_ * y + f_)
+            cmds = [c if c[0] == 'Z' else (c[0],) + tuple(v for i in range(1, len(c), 2) for v in tp(c[i], c[i + 1])) for c in cmds]
+            e = dict(e, sw=e.get('sw', 0) * math.sqrt(abs(a_ * d_ - b_ * c_)))
         f = parse_colour(e.get('fill')); s = parse_colour(e.get('stroke'))
         if f is False or s is False: return None                                         # gradients and url() paints
         if e.get('op', 1) < 0.999 or (f and e.get('fo', 1) < 0.999) or (s and e.get('so', 1) < 0.999): return None
