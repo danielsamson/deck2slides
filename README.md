@@ -443,3 +443,18 @@ After the review, the system was reorganised around a page model: **page furnitu
 ### Pictures from Google Slides decks
 
 The connector returns each picture as a signed link on the Google docs host that expires within minutes, and the sandbox's network must allow that host. Download them straight after reading the links, then `images.build_map` turns them into web-sized files (animated GIFs become their first frame, wide pictures are capped at 1600 px, pictures with transparency stay PNG). The converter writes `IMG:<objectId>` placeholders (`IMG:bg<N>` for a slide's photo background, now a full-bleed first picture), and `gslides2claude.resolve_images` swaps in real urls: local `file://` for rendering, `/_blob/<id>` for an artifact after the files are uploaded as assets. Recipes extract pictures and photo backgrounds too, so the recreate-and-compare test now includes them. Two rules keep generated systems clean: pictures that are portraits of real people (square 512 px images) are never mapped, and the recipe slot is marked `placeholder` so the example shows an empty round frame; and downloaded pictures, tokens and generated systems live only in ignored working folders, never in the repository.
+
+## Icons and simple drawings are native vector shapes
+
+An inline `<svg>` made only of paths, circles, rects, lines, polylines and polygons (every `x-icon`, the wordmark) is exported as one
+PowerPoint freeform (`a:custGeom`, `d2s/svgvec.py`), not as a small picture. Google imports it as an editable vector shape, so there
+is no resampling: position, size and line weight match the browser. As pictures they were 1-2 px up-left of the render and thinner.
+
+- `js/extract.cjs` records each drawing's viewBox and every element's computed style (`it.vec`).
+- `svgvec.build` returns `None` when it cannot be faithful (transforms, masks, gradients, two colours, mixed stroke widths,
+  non-uniform scaling); those stay pictures (today only the team avatar placeholders).
+- A freeform must not sit next to the default rectangle geometry (`a:prstGeom`): Google draws the rectangle. `add_vector` removes it,
+  and `tests/test_svgvec.py` fails if both are present.
+- Keep an icons page in every deck that uses icons (TOAST: `ds_icons`), so the set in use is visible and checked on each export.
+- Corrections (`fit-blocks`) now also measure drift along a word (`dw`, applied as letter-spacing) and `dx` is honoured for right and
+  centre aligned text. `d2s.py patch` accepts `widened` matching for decks whose boxes already carry corrections.

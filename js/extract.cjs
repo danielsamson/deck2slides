@@ -221,6 +221,21 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
   for (const d of data) for (const it of d.items) {
     if (it.type === 'svg') {
       const markup = await p.evaluate(id => document.querySelector('[data-gs="' + id + '"]').outerHTML, it.id);
+      // Vector description for the PPTX (native freeform shapes: no resampling, exact position). Null when the drawing uses anything we cannot map.
+      it.vec = await p.evaluate(id => {
+        const svg = document.querySelector('[data-gs="' + id + '"]'); const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+        if (vb.length !== 4 || vb.some(isNaN)) return null; const els = [];
+        for (const e of svg.querySelectorAll('*')) {
+          const t = e.tagName.toLowerCase(); if (t === 'title' || t === 'desc') continue;
+          if (!['path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'g'].includes(t)) return null;
+          if (t === 'g') continue; const cs = getComputedStyle(e);
+          if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+          const at = {}; for (const a of e.attributes) at[a.name] = a.value;
+          if (at.transform || at.mask || at['clip-path'] || at.filter) return null;
+          els.push({ t, at, sw: parseFloat(cs.strokeWidth) || 0, stroke: cs.stroke, fill: cs.fill, cap: cs.strokeLinecap, join: cs.strokeLinejoin, op: +cs.opacity, fo: +cs.fillOpacity, so: +cs.strokeOpacity });
+        }
+        return { vb, els, color: getComputedStyle(svg).color };
+      }, it.id);
       await p2.setContent('<body style="margin:0;background:transparent"><div id="w" style="display:inline-block;color:' + it.color + '">' + markup.replace(/style="[^"]*"/, 'style="display:block;width:' + it.w + 'px;height:' + it.h + 'px"') + '</div></body>');
       it.src = path.join(OUT, 'svg', it.id + '.png'); await (await p2.$('#w')).screenshot({ path: it.src, omitBackground: true });
     }

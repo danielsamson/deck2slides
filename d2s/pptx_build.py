@@ -13,6 +13,7 @@ from . import config as C
 from .units import emu, hexc, rot_vec
 from .fonts import FontDB
 from . import geomclip
+from . import svgvec
 PT = C.PT_PER_PX
 FDB = FontDB({})          # replaced in build()
 CORR = {}; CUR = [None]; CROPDIR = ['crops']    # per-block corrections measured on a previous export (see imgdiff.fit_text); CUR = 'slide id:item index'
@@ -315,7 +316,7 @@ def plan_embeds(data, picture_mode):
     budget = C.UPLOAD_BUDGET_BYTES - C.UPLOAD_RESERVE_BYTES; cands = []
     for d in data:
         for i, it in enumerate(d['items']):
-            if it['type'] in ('img', 'svg') and it.get('src') and os.path.exists(it['src']) and not it['src'].lower().endswith('.svg'):
+            if it['type'] in ('img', 'svg') and not it.get('_spec') and it.get('src') and os.path.exists(it['src']) and not it['src'].lower().endswith('.svg'):
                 cands.append((d['id'], i, it))
     def sizes(scale):
         out = []
@@ -431,6 +432,35 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     if not emb: ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
     return pic
 
+def add_vector(slide, it, spec):
+    """An inline SVG drawing (icon) as one native freeform with a stroke: Google keeps it vector, so nothing is resampled."""
+    w, h = it['w'], it['h']
+    sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(it['cx'] - w / 2), emu(it['cy'] - h / 2), max(1, emu(w)), max(1, emu(h)))
+    if abs(it.get('rot', 0)) > 0.01: sp.rotation = it['rot']
+    spPr = strip(sp); op = it.get('op', 1)
+    S = 100000; cg = E('a:custGeom'); E('a:avLst', cg); E('a:gdLst', cg); E('a:ahLst', cg); E('a:cxnLst', cg); E('a:rect', cg, l='0', t='0', r='r', b='b'); pl = E('a:pathLst', cg)
+    pt = lambda parent, x, y: E('a:pt', parent, x=int(round(x * S)), y=int(round(y * S)))
+    for p in spec['paths']:
+        at = dict(w=S, h=S)
+        if not p['fill']: at['fill'] = 'none'
+        if not p['stroke']: at['stroke'] = '0'
+        path = E('a:path', pl, **at)
+        for c in p['cmds']:
+            if c[0] == 'M': pt(E('a:moveTo', path), c[1], c[2])
+            elif c[0] == 'L': pt(E('a:lnTo', path), c[1], c[2])
+            elif c[0] == 'C': cb = E('a:cubicBezTo', path); pt(cb, c[1], c[2]); pt(cb, c[3], c[4]); pt(cb, c[5], c[6])
+            else: E('a:close', path)
+    for g in spPr.findall(qn('a:prstGeom')): spPr.remove(g)       # the freeform replaces the default rectangle; keeping both draws the box
+    spPr.find(qn('a:xfrm')).addnext(cg)
+    if spec['fill']: color(spPr, spec['fill'], op)
+    else: E('a:noFill', spPr)
+    ln = E('a:ln', spPr)
+    if spec['stroke']:
+        ln.set('w', str(emu(spec['sw']))); ln.set('cap', {'round': 'rnd', 'square': 'sq'}.get(spec['cap'], 'flat')); color(ln, spec['stroke'], op)
+        E('a:round' if spec['join'] == 'round' else 'a:bevel' if spec['join'] == 'bevel' else 'a:miter', ln)
+    else: E('a:noFill', ln)
+    sp.name = 'Icon'; return sp
+
 def add_line(slide, it):
     c = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, emu(it['x1']), emu(it['y1']), emu(it['x2']), emu(it['y2']))
     for st in c._element.findall(qn('p:style')): c._element.remove(st)
@@ -497,7 +527,13 @@ def _fill_placeholder(slide, it, used):
 
 def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None, corrections=None):
     global FDB, CORR; FDB = fdb; CORR = corrections or {}; CROPDIR[0] = os.path.join(os.path.dirname(os.path.abspath(out)), 'crops'); ASSETS.clear(); CLIPS.clear(); ELEMENTS.clear()
-    data = json.load(open(src + '/slides.json')); embeds, escale = plan_embeds(data, picture_mode)
+    data = json.load(open(src + '/slides.json'))
+    for d in data:                  # drawings that map to native vector shapes never become pictures
+        for it in d['items']:
+            if it['type'] == 'svg' and it.get('vec'):
+                spec = svgvec.build(it['vec'], it['w'], it['h'])
+                if spec: it['_spec'] = spec
+    embeds, escale = plan_embeds(data, picture_mode)
     if template:
         prs = Presentation(template)
         for sid in list(prs.slides._sldIdLst): prs.part.drop_rel(sid.rId); prs.slides._sldIdLst.remove(sid)     # keep masters and layouts, drop the template's own slides
@@ -532,7 +568,9 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None, 
                     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = RGBColor(round(it['fill']['r']), round(it['fill']['g']), round(it['fill']['b']))
                 else: add_shape(slide, it)
             elif ty in ('img', 'clip'): picture(it, 'Picture', None, idx)
-            elif ty == 'svg': picture(it, 'Drawing', 'fill', idx)
+            elif ty == 'svg':
+                if it.get('_spec'): add_vector(slide, it, it['_spec'])
+                else: picture(it, 'Drawing', 'fill', idx)
             elif ty == 'line': add_line(slide, it)
             elif ty == 'link':
                 sp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(it['cx'] - it['w'] / 2), emu(it['cy'] - it['h'] / 2), emu(it['w']), emu(it['h']))

@@ -41,3 +41,14 @@ Use this when asked to "publish", "export" or "put it on Google Slides". Never h
 - `sleep` loops are blocked in this environment; wait with an `until` loop on a log line.
 - The Slides MCP rate-limits thumbnail reads (about 27 a minute).
 - Do not leave test files or a half-built deck in the user's Drive without saying so.
+
+## Lessons added later
+
+- Icons and line drawings go out as native freeforms (`d2s/svgvec.py`), never as small pictures: pictures are resampled by Google.
+  After an export, zoom into the icons (crop 60x60 at 4x, Claude / Google / overlay) before calling the deck done.
+- Never leave `a:prstGeom` beside `a:custGeom` on one shape.
+- Reusing bundle decks between exports is fine when the placeholder list (`manifest.json` tags) is unchanged: upload only the new
+  `deck.pptx`, re-read the bundles for fresh image URLs, then send `replaceImage`. Send them one bundle per call, so a typo in one
+  URL fails only that call.
+- Do not stack a correction on one that was never applied: re-measure on the export you are looking at (`fit-blocks --prev` adds the
+  residual to what is already in the deck).
