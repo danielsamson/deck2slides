@@ -28,7 +28,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
   fs.mkdirSync(path.join(OUT, 'svg'), { recursive: true });
   const deck = JSON.parse(fs.readFileSync(path.join(root, 'deck.json'), 'utf8')); const css = fs.readFileSync(path.join(root, 'deck.css'), 'utf8');
   const fonts = Object.values(deck.faces).map(f => '<link rel="stylesheet" href="' + f.href + '">').join('');
-  let html = '<!doctype html><meta charset="utf-8">' + fonts + '<style>*{margin:0}body{background:#444}section{position:relative;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;margin-bottom:20px}hr{border:0}img{display:block}aside{display:none}x-shape{display:block}x-shape[kind=ellipse]{border-radius:50%}x-icon{display:block}section>*{position:relative}' + css + '\n*{animation:none !important}</style>';
+  let html = '<!doctype html><meta charset="utf-8">' + fonts + '<style>*{margin:0}body{background:#444}section{position:relative;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;margin-bottom:20px}hr{border:0}img{display:block}aside{display:none}x-shape{display:block}x-shape[kind=ellipse]{border-radius:50%}x-icon{display:block}section>*{position:relative}' + css + '\n*{animation:none !important}img:not([data-crop]){object-position:50% 50% !important}</style>' + '<script>document.addEventListener("DOMContentLoaded",()=>{document.querySelectorAll("body *").forEach(e=>{if(getComputedStyle(e).textWrapStyle==="balance")e.style.textWrapStyle="auto"})});document.addEventListener("DOMContentLoaded",()=>document.querySelectorAll("img[data-crop]").forEach(i=>{const m=/^\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%/.exec(i.getAttribute("data-crop"));if(m){i.style.objectFit="cover";i.style.objectPosition=m[2]+"% "+m[3]+"%"}}))</script>';
   for (const id of deck.order) {
     let s = fs.readFileSync(path.join(root, 'slides', id + '.html'), 'utf8');
     const imgs = [...s.matchAll(/<img([^>]*?)src="([^"]+)"([^>]*)>/g)]; const rep = new Map();
@@ -178,7 +178,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op }); continue; }
         if (el.tagName === 'IMG') {
           { const ibg = col(cs.backgroundColor); if (ibg && ibg.a > 0) items.push({ type: 'shape', ...g, op, radius, ell, fill: ibg, grad: null, stroke: null, shadow: null }); }
-          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, opos: cs.objectPosition, radius, shadow: sh, op, pad, bw, cpath, ovclip, ...g });
+          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, opos: (() => { const m = /^\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%/.exec(el.getAttribute('data-crop') || ''); return m ? m[2] + '% ' + m[3] + '%' : '50% 50%'; })(), zoom: (() => { const m = /^\s*([\d.]+)\s/.exec(el.getAttribute('data-crop') || ''); return m ? +m[1] : 1; })(), radius, shadow: sh, op, pad, bw, cpath, ovclip, ...g });
         } else {
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
           if ((bg && bg.a > 0) || grad || uniform || hasText) {

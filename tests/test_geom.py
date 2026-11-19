@@ -25,3 +25,11 @@ def test_gradient_fill_xml():
 
 def test_ellipse_extent_of_empty_plan_without_pictures():
     assert P.plan_embeds([dict(id='s', items=[])], 'auto')[0] == set()
+
+def test_crop_rect_matches_viewer_formula():
+    from d2s.pptx_build import crop_rect
+    # zoom 1, wide box on a square picture: cover crops the height, object-position y decides which part
+    l, t, w, h = crop_rect(1000, 1000, 800, 400, 0.5, 0.0, 1.0); assert (round(l), round(t), round(w), round(h)) == (0, 0, 1000, 500)
+    l, t, w, h = crop_rect(1000, 1000, 800, 400, 0.5, 1.0, 1.0); assert round(t) == 500
+    # zoom 2 about the centre shows the middle quarter of the cover-fitted picture
+    l, t, w, h = crop_rect(1000, 1000, 400, 400, 0.5, 0.5, 2.0); assert (round(l), round(t), round(w), round(h)) == (250, 250, 500, 500)

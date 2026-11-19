@@ -291,17 +291,26 @@ def opos_frac(opos):
         return (f + [0.5, 0.5])[:2]
     except Exception: return [0.5, 0.5]
 
-def _embed_data(path, pw, ph, method, scale, opos=None):
+def crop_rect(W, H, pw, ph, fx, fy, zoom=1.0):
+    """The part of a W x H picture the viewer shows in a pw x ph box with data-crop "zoom x y": the picture is cover-fitted into a box
+    zoom times larger (object-position x y), and the box shows the window of it that starts at (zoom-1)*x, (zoom-1)*y of the box
+    (artifact-type/app.js, function k3). -> (left, top, width, height) in picture pixels."""
+    z = max(1.0, zoom or 1.0); sc = max(z * pw / W, z * ph / H)
+    ox, oy = (z * pw - W * sc) * fx, (z * ph - H * sc) * fy
+    left, top = ((z - 1) * fx * pw - ox) / sc, ((z - 1) * fy * ph - oy) / sc
+    w, h = pw / sc, ph / sc
+    return max(0.0, min(left, W - w)), max(0.0, min(top, H - h)), w, h
+
+def _embed_data(path, pw, ph, method, scale, opos=None, zoom=1.0):
     """-> (bytes, mime, srcRect (l,t,r,b fractions) or None) for a picture shown in a pw x ph box, or None (GIFs stay placeholders)."""
     if path.lower().endswith('.gif'): return None
     import io
     with Image.open(path) as im0:
         im = im0.convert('RGBA') if (im0.mode in ('RGBA', 'LA') or 'transparency' in im0.info or im0.mode == 'P') else im0.convert('RGB'); W, H = im.size
     crop = None; cw, ch = W, H
-    if method == 'CENTER_CROP' and abs((pw / ph) / (W / H) - 1) > 0.005:
-        fx, fy = opos_frac(opos)
-        if (pw / ph) > (W / H): ch = W * ph / pw; t = (H - ch) * fy; crop = (0.0, t / H, 0.0, (H - ch - t) / H)
-        else: cw = H * pw / ph; l = (W - cw) * fx; crop = (l / W, 0.0, (W - cw - l) / W, 0.0)
+    if method == 'CENTER_CROP' and (abs((pw / ph) / (W / H) - 1) > 0.005 or (zoom or 1) > 1.0001):
+        fx, fy = opos_frac(opos); l, t, cw, ch = crop_rect(W, H, pw, ph, fx, fy, zoom)
+        crop = (l / W, t / H, (W - l - cw) / W, (H - t - ch) / H)
     k = min(1.0, pw * scale / cw)
     if k < 0.999: im = im.resize((max(1, round(W * k)), max(1, round(H * k))), Image.LANCZOS)
     b = io.BytesIO()
@@ -322,7 +331,7 @@ def plan_embeds(data, picture_mode):
         out = []
         for sid, i, it in cands:
             fit = 'fill' if it['type'] == 'svg' else it.get('fit', 'fill'); method = 'CENTER_CROP' if fit in ('cover', 'fill') else 'CENTER_INSIDE'
-            e = _embed_data(it['src'], it['w'], it['h'], method, scale, it.get('opos'))
+            e = _embed_data(it['src'], it['w'], it['h'], method, scale, it.get('opos'), it.get('zoom', 1))
             if e: out.append(((it['src'], round(it['w']), round(it['h']), method), len(e[0]), it.get('op', 1) < 0.999, sid, i))
         return out
     scale = C.EMBED_SCALE
@@ -375,19 +384,18 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     fit = it.get('fit', 'fill'); radius = it.get('radius', 0)
     if fit == 'contain': s = min(cw / nw, ch / nh); pw, ph = nw * s, nh * s
     else: pw, ph = cw, ch
-    method = 'CENTER_CROP' if fit in ('cover', 'fill') and abs(1 - (pw / ph) / (nw / nh)) > 0.005 else 'CENTER_INSIDE'
-    emb = _embed_data(path, pw, ph, method, embed_scale, it.get('opos')) if embed_scale else None
+    method = 'CENTER_CROP' if fit in ('cover', 'fill') and (abs(1 - (pw / ph) / (nw / nh)) > 0.005 or (it.get('zoom', 1) or 1) > 1.0001) else 'CENTER_INSIDE'
+    emb = _embed_data(path, pw, ph, method, embed_scale, it.get('opos'), it.get('zoom', 1)) if embed_scale else None
     fx, fy = opos_frac(it.get('opos'))
-    if not emb and method == 'CENTER_CROP' and (abs(fx - 0.5) > 0.01 or abs(fy - 0.5) > 0.01):
+    if not emb and method == 'CENTER_CROP' and (abs(fx - 0.5) > 0.01 or abs(fy - 0.5) > 0.01 or (it.get('zoom', 1) or 1) > 1.0001):
         # Slides' replaceImage can only crop about the centre: cut the picture to the box shape here (object-position honoured), then fit it inside
         import hashlib as _h
         with Image.open(path) as _im:
             _im = _im.convert('RGBA') if _im.mode in ('RGBA', 'LA', 'P') else _im.convert('RGB'); W_, H_ = _im.size
-            if (pw / ph) > (W_ / H_): ch_ = W_ * ph / pw; t_ = (H_ - ch_) * fy; box = (0, round(t_), W_, round(t_ + ch_))
-            else: cw_ = H_ * pw / ph; l_ = (W_ - cw_) * fx; box = (round(l_), 0, round(l_ + cw_), H_)
+            l_, t_, cw_, ch_ = crop_rect(W_, H_, pw, ph, fx, fy, it.get('zoom', 1)); box = (round(l_), round(t_), round(l_ + cw_), round(t_ + ch_))
             _c = _im.crop(box); os.makedirs(CROPDIR[0], exist_ok=True)
             ext = 'png' if _c.mode == 'RGBA' else 'jpg'
-            cp = '%s/crop_%s_%d_%d.%s' % (CROPDIR[0], _h.sha1(open(path, 'rb').read()).hexdigest()[:8], round(fx * 100), round(fy * 100), ext)
+            cp = '%s/crop_%s_%d_%d_%d.%s' % (CROPDIR[0], _h.sha1(open(path, 'rb').read()).hexdigest()[:8], round(fx * 100), round(fy * 100), round((it.get('zoom', 1) or 1) * 100), ext)
             _c.save(cp, quality=95) if ext == 'jpg' else _c.save(cp)
         path = cp; method = 'CENTER_INSIDE'
     key = 'im' + hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]

@@ -469,3 +469,19 @@ text-anchor=middle dominant-baseline=central font-size=90>` (search `mc-anthropi
 font are fine outlines, roughly half the weight of the stroked icons this repo used before, so Google showed them "really thick". `js/icons.json`
 is now generated from that font (`js/anthropicons.woff2`, `python tools/build_icons.py`), so the converter draws the same shapes the viewer draws.
 When the icon set looks wrong, read the viewer's own code before calibrating against a local render.
+
+## Rendering with the viewer's own engine (the reference)
+
+Comparing Google only against the converter's own browser render hid real differences (wrapping, picture crops, icon weight). The Claude
+Slides artifact ships its renderer: when the page `<html>` carries `data-frame-capture`, `artifact-type/capture.js` renders the cover slide
+and sets `data-thumb-ready`. `tools/viewer_render.js` runs it offline in headless Chromium, once per slide (deck.json rewritten to one slide
+per load), with the deck's files and pictures served locally, and writes `v<N>.png`. Set up: read `index.html`, `artifact-type/*` (app.js,
+capture.js, capture.css, app.css, editor.js, woff2.js, video.js, read-worker.js, export.js), `project/*` from the artifact; add
+`data-frame-capture` to `<html>`; add a `_files.json` listing; `NODE_PATH=$(npm root -g) node tools/viewer_render.js <root> <outdir> <blobs.json> 4`.
+Then `d2s.py report <work> <png dir> --ref full` with the viewer images as the reference.
+
+Rules the viewer applies that the converter now follows (all checked against its output):
+- `text-wrap: balance` is dropped; `pretty` is kept. `text-wrap: wrap` must not be forced (it overrides `white-space: nowrap`).
+- Picture crop is `data-crop="zoom x% y%"` only; CSS `object-position` is ignored. `crop_rect` in `pptx_build.py` mirrors its `k3()`.
+- `x-icon` is a glyph from its icon font (see above).
+Remaining known differences: outline-word internals (`tr_sun`), one-word wrap differences in a few cards (`textpage`, `m_opps`).
