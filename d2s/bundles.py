@@ -19,7 +19,13 @@ def prepare(assets, outdir, limit):
             alpha = im.mode == 'RGBA' and im.getchannel('A').getextrema()[0] < 255
             out = os.path.join(outdir, key + ('.png' if alpha else '.jpg'))
             if alpha:
+                # Over the limit: shrink, keep full colour. A 256-colour palette bands soft glows and blurs badly (seen on
+                # full-slide SVG glows); Slides serves pictures at 2048 px at most, and a blurred picture loses nothing by
+                # having fewer pixels. The palette is only the last resort, below MIN_SHRINK_W.
+                if im.width > C.SLIDES_MAX_SERVED_W: im = im.resize((C.SLIDES_MAX_SERVED_W, max(1, round(im.height * C.SLIDES_MAX_SERVED_W / im.width))), Image.LANCZOS)
                 im.save(out, optimize=True)
+                while os.path.getsize(out) > limit and im.width * 0.8 >= C.MIN_SHRINK_W:
+                    im = im.resize((int(im.width * 0.8), max(1, int(im.height * 0.8))), Image.LANCZOS); im.save(out, optimize=True)
                 if os.path.getsize(out) > limit: im.quantize(256, method=Image.FASTOCTREE, dither=Image.FLOYDSTEINBERG).save(out, optimize=True)
             else:
                 q = 92

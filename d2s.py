@@ -11,7 +11,7 @@
 """
 import argparse, json, os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-from d2s import config as C, fonts as F, pptx_build, bundles, gslides, imgdiff, calibrate, pptx2claude, tokens, dsbuild, components, componentsheet
+from d2s import config as C, fonts as F, loops, pptx_build, bundles, gslides, imgdiff, calibrate, pptx2claude, tokens, dsbuild, components, componentsheet
 
 def extract(deck, work, assets=None, gifs=None):
     os.makedirs(work, exist_ok=True)
@@ -31,6 +31,7 @@ def convert(a):
     print('fonts:', {k: (v['natural'], v['source']) for k, v in table.items()}, '| calibration:', 'yes' if cal else 'NONE (first-line offsets uncorrected; run calib-deck/calib-fit)')
     for sl in json.load(open(a.work + '/slides.json')):
         for w in sl.get('warns', []): print('WARNING slide %s: %s' % (sl['id'], w), file=sys.stderr)
+    for line in loops.make_all(a.work): print(line)
     pptx_build.build(a.work, a.work + '/deck.pptx', fdb, a.picture_mode, template=a.template)
     packs, too_big = bundles.pack(a.work)
     print('deck.pptx %d KB; %d bundles %s; too big for the connector (use a shared Drive folder): %s' % (os.path.getsize(a.work + '/deck.pptx') // 1024, len(packs), [p['kb'] for p in packs], too_big or 'none'))

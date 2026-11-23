@@ -21,6 +21,9 @@ BOLD_WEIGHT = 700
 EMIT_EA_CS = False   # also write the East-Asian / complex-script typeface; off to keep files small (Latin text only needs latin). UNVERIFIED for CJK decks
 # A glyph the web font lacks is drawn by the browser from the fallback face; we write it as this family.
 FALLBACK_FAMILY = 'Arial'
+# Deck faces whose family name Google does not know, written as a known family and weight instead.
+# 'Google Sans Display' is a Slides-deck alias for the Google Sans 700 file (Think with Google system); its text renders bold.
+FACE_ALIAS = {'Google Sans Display': ('Google Sans', 700)}
 
 # --- First-line offset ---------------------------------------------------------------------------------------
 # Google puts the first text line some px above/below Chromium. Offset is stored as a fraction of font size and
@@ -54,6 +57,16 @@ PICTURE_SHADOW = 'native'      # 'native': outerShdw on the picture itself; 'sha
 PICTURE_ALPHA = False          # alphaModFix on the placeholder picture (the API cannot set image transparency: 'transparency cannot be updated')
 SHADOW_INSET_PX = 1            # a picture's shadow shape is this much smaller on each side so its corners never show
 MAX_PIC_WIDTH_FACTOR = 2.0     # pictures are bundled at most this many times their on-slide width (connector size limit)
+GIF_UPLOAD_KB = 2800           # a looping GIF for the deck must fit one Drive connector call (about 3.1 MB of file, measured) with its bundle
+GIF_HQ_KB = 24000              # the HQ copy, replaced by hand in Slides (limit 50 MB; big GIFs stutter in Slides)
+GIF_LOSSY = 100                # gifsicle --lossy for the upload copy ...
+GIF_LOSSY_HQ = 40              # ... and for the HQ copy
+GIF_MIN_W = 480                # below this width the upload copy drops frames per second instead (down to half)
+GIF_LOOP_MAX_W = 960           # looping SVG drawings become GIFs at most this wide (blurred glows lose little; frames add up fast)
+GIF_VIDEO_MAX_W = 1200         # video loops (animated WebP) as GIFs: at most this wide ...
+GIF_VIDEO_SCALE = 1.0          # ... and at most this many times their on-slide width
+SLIDES_MAX_SERVED_W = 2048     # Slides hands pictures back at =s2048: wider bundle pictures only cost upload bytes
+MIN_SHRINK_W = 800             # bundles shrink an over-limit PNG down to this width before falling back to a 256-colour palette
 BUNDLE_LIMIT_KB = 2900         # connector limit: a 3.03 MB file uploaded, a 6 MB one was refused (4.2 MB per call). An earlier session measured 0.85 MB (1.1 MB failed); that was not reproduced
 
 # --- Clips (GIF) ---------------------------------------------------------------------------------------------

@@ -27,7 +27,13 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
 (async () => {
   fs.mkdirSync(path.join(OUT, 'svg'), { recursive: true });
   const deck = JSON.parse(fs.readFileSync(path.join(root, 'deck.json'), 'utf8')); const css = fs.readFileSync(path.join(root, 'deck.css'), 'utf8');
-  const fonts = Object.values(deck.faces).map(f => '<link rel="stylesheet" href="' + f.href + '">').join('');
+  // A face is a Google Fonts link (href) or an uploaded file (src: project/... or /_blob/<id>, resolved like pictures).
+  const fonts = Object.values(deck.faces || {}).map(f => {
+    if (f.href) return '<link rel="stylesheet" href="' + f.href + '">';
+    const fp = f.src && resolveImg(f.src.replace(/^project\//, ''), 'faces');
+    if (!fp || !fs.existsSync(fp)) { console.log('UNMAPPED FONT', f.family, f.src); return ''; }
+    return '<style>@font-face{font-family:"' + f.family + '";src:url("file://' + fp + '")}</style>';
+  }).join('');
   let html = '<!doctype html><meta charset="utf-8">' + fonts + '<style>*{margin:0}body{background:#444}section{position:relative;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;margin-bottom:20px}hr{border:0}img{display:block}aside{display:none}x-shape{display:block}x-shape[kind=ellipse]{border-radius:50%}x-icon{display:block}section>*{position:relative}' + css + '\n*{animation:none !important}</style>';
   for (const id of deck.order) {
     let s = fs.readFileSync(path.join(root, 'slides', id + '.html'), 'utf8');
@@ -174,7 +180,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         if (ov.inheritR > radius) radius = ov.inheritR;
         const ovclip = ov.out.length ? ov.out : null;
         const sh = shadow(cs);
-        if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op }); continue; }
+        if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op, qi: [...document.querySelectorAll('svg')].indexOf(el) }); continue; }
         if (el.tagName === 'IMG') {
           { const ibg = col(cs.backgroundColor); if (ibg && ibg.a > 0) items.push({ type: 'shape', ...g, op, radius, ell, fill: ibg, grad: null, stroke: null, shadow: null }); }
           items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, cpath, ovclip, ...g });
@@ -216,14 +222,57 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         it.src = f; delete it.page; }
       await p3.close(); } }
   // Inline SVG (icons, the branching-lives drawing) has no native equivalent in Slides: each becomes a small transparent picture.
+  // The deck CSS goes in too: an SVG can lean on it (transform-origin / transform-box on classed groups); without it scaled groups drift to the corner.
   const p2 = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 3 });
   for (const d of data) for (const it of d.items) {
     if (it.type === 'svg') {
       const markup = await p.evaluate(id => document.querySelector('[data-gs="' + id + '"]').outerHTML, it.id);
-      await p2.setContent('<body style="margin:0;background:transparent"><div id="w" style="display:inline-block;color:' + it.color + '">' + markup.replace(/style="[^"]*"/, 'style="display:block;width:' + it.w + 'px;height:' + it.h + 'px"') + '</div></body>');
+      await p2.setContent('<style>' + css + '\n*{animation:none !important;transition:none !important}</style><body style="margin:0;background:transparent"><div id="w" style="display:inline-block;color:' + it.color + '">' + markup.replace(/style="[^"]*"/, 'style="display:block;width:' + it.w + 'px;height:' + it.h + 'px"') + '</div></body>');
       it.src = path.join(OUT, 'svg', it.id + '.png'); await (await p2.$('#w')).screenshot({ path: it.src, omitBackground: true });
     }
     if (it.type === 'clip') { const g = path.join(GIFS, it.clip + '.gif'); it.gif = GIFS && fs.existsSync(g) ? g : null; }
+  }
+  // Looping drawings: an inline <svg> with infinite CSS animations inside it (or on an ancestor) is recorded frame by frame for a
+  // looping GIF (d2s/loops.py encodes it). GIF transparency is on/off only, so each frame is the slide as painted up to the
+  // drawing (backgrounds and everything before it in the document); what comes after it stays hidden, it is drawn natively on top.
+  // Durations are nudged so every loop closes in one period (e.g. 16 s, 6 s and 9 s -> 16, 5.33, 8); the change is reported.
+  const svgItems = []; data.forEach((d, si) => d.items.forEach(it => { if (it.type === 'svg') svgItems.push([si, it]); }));
+  if (svgItems.length && process.env.D2S_LOOPS !== '0') {
+    const live = path.join(OUT, 'preview_live.html');
+    fs.writeFileSync(live, fs.readFileSync(path.join(OUT, 'preview.html'), 'utf8').replace('\n*{animation:none !important}', ''));
+    const p4 = await b.newPage({ viewport: { width: SLIDE_W, height: SLIDE_H }, deviceScaleFactor: 1 });
+    await p4.goto('file://' + live); await p4.waitForTimeout(1500); await p4.evaluate(() => document.fonts.ready);
+    const FPS = +(process.env.D2S_LOOP_FPS || 12), MAXP = +(process.env.D2S_LOOP_MAX_S || 18) * 1000;
+    for (const [si, it] of svgItems) {
+      const plan = await p4.evaluate(({ qi, si, MAXP }) => {
+        const svg = document.querySelectorAll('svg')[qi]; const sec = document.querySelectorAll('section')[si]; if (!svg || !sec) return null;
+        const all = document.getAnimations();
+        const rel = a => { const t = a.effect && a.effect.target; return t && (svg.contains(t) || t.contains(svg)); };
+        const loops = all.filter(a => rel(a) && a.effect.getTiming().iterations === Infinity);
+        if (!loops.length) return null;
+        const durs = loops.map(a => a.effect.getTiming().duration), maxD = Math.max(...durs);
+        const gcd = (a, b) => b ? gcd(b, a % b) : a; const r = durs.map(d => Math.round(d / 100)); const lcm = r.reduce((a, b) => a * b / gcd(a, b)) * 100;
+        let P = lcm, cost = 0;
+        if (lcm > MAXP) { cost = Infinity; for (let c = maxD; c <= Math.max(maxD, MAXP); c += 100) { const k = Math.max(...durs.map(d => Math.abs(c / Math.max(1, Math.round(c / d)) / d - 1))); if (k < cost - 1e-9) { cost = k; P = c; } } }
+        loops.forEach(a => { const t = a.effect.getTiming(); const nd = P / Math.max(1, Math.round(P / t.duration)); a.effect.updateTiming({ duration: nd, delay: t.delay * nd / t.duration }); a.pause(); a._d2s0 = a.currentTime; });
+        window.__d2sLoops = loops;
+        for (const a of all) if (!loops.includes(a)) { try { a.finish(); } catch (e) { a.cancel(); } }
+        for (const e of sec.querySelectorAll('*')) if (!svg.contains(e) && !e.contains(svg) && (svg.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING)) e.style.setProperty('visibility', 'hidden', 'important');
+        window.scrollTo(0, sec.getBoundingClientRect().top + window.scrollY);
+        return { P, change: +(cost * 100).toFixed(1), durs, newDurs: loops.map(a => a.effect.getTiming().duration) };
+      }, { qi: it.qi, si, MAXP });
+      if (!plan) continue;
+      const x0 = Math.max(0, it.cx - it.w / 2), y0 = Math.max(0, it.cy - it.h / 2), x1 = Math.min(SLIDE_W, it.cx + it.w / 2), y1 = Math.min(SLIDE_H, it.cy + it.h / 2);
+      const n = Math.max(2, Math.round(plan.P / 1000 * FPS)), dir = path.join(OUT, 'loops', it.id); fs.mkdirSync(dir, { recursive: true });
+      for (let f = 0; f < n; f++) {
+        await p4.evaluate(t => window.__d2sLoops.forEach(a => { a.currentTime = a._d2s0 + t; }), f * plan.P / n);
+        await p4.screenshot({ path: path.join(dir, 'f_' + String(f).padStart(5, '0') + '.png'), clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } });
+      }
+      it.loop = { dir, fps: n / (plan.P / 1000), frames: n, period_ms: plan.P, durations_ms: plan.durs, adjusted_ms: plan.newDurs, max_change_pct: plan.change };
+      Object.assign(it, { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 });
+      await p4.evaluate(() => location.reload()); await p4.waitForTimeout(1200); await p4.evaluate(() => document.fonts.ready);
+    }
+    await p4.close();
   }
   // Natural line height per family, as the browser measures it (line-height: normal). Cross-checked against the font file by fonts.py.
   const fontInfo = await p.evaluate(() => { const o = {}; const seen = new Set();

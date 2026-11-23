@@ -83,6 +83,7 @@ def text_body(sp, it, ins, forced):
     sb = E('a:spcBef', pPr); E('a:spcPts', sb, val=0); sa = E('a:spcAft', pPr); E('a:spcPts', sa, val=0)
     runs = [dict(r) for r in t['runs']]
     def rpr(parent, r, tag='a:rPr'):
+        if r['fam'] in C.FACE_ALIAS: r = dict(r, fam=C.FACE_ALIAS[r['fam']][0], w=C.FACE_ALIAS[r['fam']][1])
         at = dict(lang='en-GB', sz=int(round(r['fs'] * PT * 100)), b='1' if FontDB.bold(r['w']) else '0')
         if r.get('it'): at['i'] = '1'
         if r.get('ul'): at['u'] = 'sng'
@@ -442,7 +443,7 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
         def picture(it, name, force_fit=None, idx=None):
             nonlocal npic
             path = it['src']
-            if it['type'] == 'clip' and it.get('gif'): path = it['gif']
+            if it.get('gif'): path = it['gif']          # clips, video loops and looping drawings (d2s/loops.py)
             it = dict(it, fit=force_fit or it.get('fit', 'fill'))
             if picture_mode in ('mask', 'auto', 'embed'): p = add_picture_mask(slide, it, path, d['id'], npic, escale if (d['id'], idx) in embeds else None); npic += 1
             else: p = add_picture_shape(slide, it, path, src)

@@ -29,14 +29,26 @@ def fetch_family_file(family, href, cache):
     except Exception as e:
         print('font fetch failed for', family, e); return None
 
+def local_face_file(deck_json, src):
+    """An uploaded face: 'project/ds/...' under the deck folder, or '/_blob/<id>' in <deck>/blobs/. Path or None."""
+    root = os.path.dirname(os.path.abspath(deck_json))
+    if src.startswith('/_blob/'):
+        d, h = os.path.join(root, 'blobs'), src[len('/_blob/'):]
+        hit = [n for n in os.listdir(d) if n.startswith(h)] if os.path.isdir(d) else []
+        return os.path.join(d, hit[0]) if hit else None
+    p = os.path.join(root, re.sub(r'^project/', '', src))
+    return p if os.path.exists(p) else None
+
 def font_table(deck_json, fonts_json, cache):
     """family -> {natural, natural_browser, source, file}. natural comes from the font file when it can be fetched,
     else from the browser's own measurement of `line-height: normal` (extract.cjs), else NATURAL_FALLBACK."""
-    faces = {v['family']: v['href'] for v in json.load(open(deck_json)).get('faces', {}).values()}
+    faces = json.load(open(deck_json)).get('faces', {}).values()
+    hrefs = {v['family']: v['href'] for v in faces if v.get('href')}
+    local = {v['family']: local_face_file(deck_json, v['src']) for v in faces if v.get('src')}
     out = {}
     for fam, info in json.load(open(fonts_json)).items():
         e = dict(natural_browser=info.get('naturalBrowser'), weights=info.get('weights', []))
-        fp = fetch_family_file(fam, faces[fam], cache) if fam in faces else None
+        fp = local.get(fam) or (fetch_family_file(fam, hrefs[fam], cache) if fam in hrefs else None)
         if fp:
             try: e['natural'] = round(natural_from_file(fp), 4); e['source'] = 'font file (' + C.NATURAL_SOURCE + ')'; e['file'] = fp
             except Exception as ex: print('cannot read', fp, ex)
