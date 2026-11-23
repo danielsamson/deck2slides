@@ -39,6 +39,11 @@ check('loop: ground picture sits under the GIF', bool(gi) and gi[0] < lp.index(s
 tb = [k for k, i in enumerate(lp) if i.get('text') and 'stays editable' in ''.join(r.get('t', '') for r in i['text']['runs'])]
 check('loop: earlier text stays above the ground', bool(tb) and bool(gi) and tb[0] > gi[0])
 check('loop: animated WebP becomes a GIF', bool(webp) and str(webp[0].get('gif', '')).endswith('.gif'))
+notes = Z.read('ppt/notesSlides/notesSlide1.xml').decode() if 'ppt/notesSlides/notesSlide1.xml' in Z.namelist() else ''
+check('notes: <aside> becomes the notes page', 'say why the borders matter' in notes)
+check('notes: slides without <aside> get no notes page', sum(1 for n in Z.namelist() if n.startswith('ppt/notesSlides/notesSlide')) == 1)
+check('alt: picture alt text in the description, tag in the title', 'descr="A sunset over the sea"' in X['imgborder'] and re.search(r'title="imgborder\.\d+\.im[0-9a-f]+"', X['imgborder']) is not None)
+check('alt: svg aria-label kept as alt text', 'descr="A breathing blue ring"' in X['loop'])
 ft = json.load(open(W + '/font_table.json')); prev = open(W + '/preview.html').read()
 check('font: uploaded face read from its file', 'font file' in ft.get('Inter Local', {}).get('source', ''), ft.get('Inter Local'))
 check('font: bold sibling file registered', 'InterLocal-700.woff2' in prev and 'font-weight:700 1000' in prev)

@@ -31,6 +31,11 @@ def convert(a):
     print('fonts:', {k: (v['natural'], v['source']) for k, v in table.items()}, '| calibration:', 'yes' if cal else 'NONE (first-line offsets uncorrected; run calib-deck/calib-fit)')
     for sl in json.load(open(a.work + '/slides.json')):
         for w in sl.get('warns', []): print('WARNING slide %s: %s' % (sl['id'], w), file=sys.stderr)
+    for fam in table:                    # a family Slides does not have is replaced (usually by Arial) when the deck opens
+        written = C.FACE_ALIAS.get(fam, (fam,))[0]
+        if F.in_google_fonts(written, a.work + '/../google_fonts_cache.json') is False:
+            print('WARNING font: "%s" is not a Google Fonts family, so Google Slides will substitute another font; use a Google Fonts family '
+                  'or map it in config.FACE_ALIAS' % written, file=sys.stderr)
     if os.environ.get('D2S_LOOPS') != '0':
         for line in loops.make_all(a.work): print(line)      # D2S_LOOPS=0: static pictures only (quick build; GIFs swapped in later)
     pptx_build.build(a.work, a.work + '/deck.pptx', fdb, a.picture_mode, template=a.template)

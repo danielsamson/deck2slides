@@ -68,3 +68,17 @@ def test_gif_encode_fits_budget_and_is_cached(tmp_path):
     assert up['frames'] > 1 and up['kb'] <= C.GIF_UPLOAD_KB and os.path.exists(hq['file'])
     t = os.path.getmtime(up['file']); up2, _ = loops.both(str(fr / 'f_%05d.png'), 12, str(tmp_path / 'g'), 'x', 200)
     assert os.path.getmtime(up2['file']) == t                          # second call came from the cache
+
+def test_google_fonts_check(monkeypatch, tmp_path):
+    import urllib.error
+    def fake(url, binary=False):
+        if 'Real' in url: return "@font-face { src: url(https://fonts.gstatic.com/s/real/v1/x.ttf) }"
+        if 'Standin' in url: return "@font-face { src: url(https://fonts.gstatic.com/l/font?kit=abc) }"
+        raise urllib.error.HTTPError(url, 400, 'bad', {}, None)
+    monkeypatch.setattr(F, '_get', fake)
+    cache = str(tmp_path / 'c.json')
+    assert F.in_google_fonts('Real Sans', cache) is True
+    assert F.in_google_fonts('Standin Neue', cache) is False          # a stand-in from /l/ is not the family
+    assert F.in_google_fonts('Nope Std', cache) is False
+    monkeypatch.setattr(F, '_get', lambda *a, **k: 1 / 0)
+    assert F.in_google_fonts('Real Sans', cache) is True              # answered from the cache

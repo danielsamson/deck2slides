@@ -39,6 +39,21 @@ def local_face_file(deck_json, src):
     p = os.path.join(root, re.sub(r'^project/', '', src))
     return p if os.path.exists(p) else None
 
+def in_google_fonts(family, cache=None):
+    """True if Google Fonts serves this family (then Google Slides offers it), False if not, None if it cannot be checked (offline).
+    A real family is served from fonts.gstatic.com/s/<name>/; unknown names return 400, and some well-known commercial names
+    (Helvetica Neue) get a stand-in served from /l/, which Slides does not have under that name."""
+    import urllib.parse, urllib.error
+    if cache and os.path.exists(cache):
+        c = json.load(open(cache))
+        if family in c: return c[family]
+    try: css = _get('https://fonts.googleapis.com/css2?family=' + urllib.parse.quote_plus(family)); ok = 'fonts.gstatic.com/s/' in css
+    except urllib.error.HTTPError as e: ok = False if e.code == 400 else None
+    except Exception: ok = None
+    if cache and ok is not None:
+        c = json.load(open(cache)) if os.path.exists(cache) else {}; c[family] = ok; json.dump(c, open(cache, 'w'), indent=1)
+    return ok
+
 def font_table(deck_json, fonts_json, cache):
     """family -> {natural, natural_browser, source, file}. natural comes from the font file when it can be fetched,
     else from the browser's own measurement of `line-height: normal` (extract.cjs), else NATURAL_FALLBACK."""

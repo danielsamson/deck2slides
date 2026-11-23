@@ -26,3 +26,10 @@ def test_reports_missing_and_unused():
 def test_unwrap_plain_presentation():
     reqs, _, problems = gslides.swap_plan(MAN, deck()['content'], [bundle('ima')['content'], bundle('imvid')])
     assert len(reqs) == 2 and not problems
+
+def test_tag_in_title_alt_text_in_description():
+    d = {'content': {'revisionId': 'r', 'slides': [{'pageElements': [
+        {'objectId': 'p9_i3', 'title': 'nightIdeaB.0.imvid', 'description': 'Story night in the room: friends on the sofa'},
+        {'objectId': 'p1_i2', 'title': 'cover.0.ima', 'description': ''}]}]}}
+    reqs, _, problems = gslides.swap_plan(MAN, d, [bundle('ima', 'imvid')])
+    assert not problems and {r['replaceImage']['imageObjectId'] for r in reqs} == {'p9_i3', 'p1_i2'}

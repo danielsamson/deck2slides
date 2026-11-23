@@ -31,9 +31,10 @@ h2 { margin: 0; font-size: 48px; font-weight: 700; }
 """
 S = {}
 S['imgborder'] = """<section id="imgborder"><h2>Picture circles with their own border</h2>
-<img src="assets/a.png" alt="" style="position:absolute; left:400px; top:400px; width:128px; height:128px; border:4px solid #ffffff; border-radius:256px; box-shadow:0 16px 40px #0000008c">
-<img src="assets/a.png" alt="" style="position:absolute; left:700px; top:400px; width:128px; height:128px; border:4px solid #ea4335; border-radius:256px; object-fit:cover; box-shadow:0 16px 40px #0000008c">
+<img src="assets/a.png" alt="A sunset over the sea" style="position:absolute; left:400px; top:400px; width:128px; height:128px; border:4px solid #ffffff; border-radius:256px; box-shadow:0 16px 40px #0000008c">
+<img src="assets/a.png" alt="A second picture, cropped" style="position:absolute; left:700px; top:400px; width:128px; height:128px; border:4px solid #ea4335; border-radius:256px; object-fit:cover; box-shadow:0 16px 40px #0000008c">
 <div style="position:absolute; left:1000px; top:400px; width:128px; height:128px; border:4px solid #ffffff; border-radius:256px; overflow:hidden; box-sizing:border-box"><img src="assets/a.png" alt="" style="width:200px; height:200px"></div>
+<aside>Notes for the picture slide: say why the borders matter.</aside>
 </section>"""
 S['band'] = """<section id="band" style="background:#121317"><h2 style="color:#fff">Rounded cards with a coloured top border</h2>
 <div style="position:absolute; left:300px; top:400px; width:330px; height:350px; background:#fff; border-radius:22px; border-top:8px solid #4285f4; transform:rotate(-7deg); box-sizing:border-box; padding:24px"><p style="margin:0">The world, so far</p></div>
@@ -51,7 +52,7 @@ S['hyphen'] = """<section id="hyphen"><h2>Breaks after a hyphen</h2>
 <p style="width:525px; margin-top:80px; font-size:44px">Then it found the close-up and the cut.</p>
 </section>"""
 S['loop'] = """<section id="loop"><h2>Loops become GIFs</h2><p style="width:600px">Text before the drawing stays editable above its ground.</p>
-<div style="position:absolute; left:960px; top:200px; width:700px; height:700px"><svg aria-label="" width="700" height="700" viewBox="0 0 700 700">
+<div style="position:absolute; left:960px; top:200px; width:700px; height:700px"><svg aria-label="A breathing blue ring" width="700" height="700" viewBox="0 0 700 700">
 <defs><radialGradient id="rg"><stop offset="0.6" stop-color="#4ea0ff" stop-opacity="0"/><stop offset="1" stop-color="#4ea0ff" stop-opacity="0.6"/></radialGradient></defs>
 <circle class="breathe" cx="350" cy="350" r="300" fill="url(#rg)"/><circle cx="350" cy="350" r="300" fill="none" stroke="#4285f4" stroke-width="3"/></svg></div>
 <img src="assets/loop.webp" alt="" style="position:absolute; left:128px; top:600px; width:480px; height:270px; object-fit:cover">

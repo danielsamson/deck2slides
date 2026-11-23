@@ -378,7 +378,8 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     if it.get('shadow') and C.PICTURE_SHADOW == 'native': shadow(pic._element.spPr, it['shadow'], it.get('op', 1))
     if (emb or C.PICTURE_ALPHA) and it.get('op', 1) < 0.999:
         blip = pic._element.find('.//' + qn('a:blip')); E('a:alphaModFix', blip, amt=int(round(it['op'] * 100000)))
-    tag = '%s.%d.%s' % (slide_id, n, key); pic._element.nvPicPr.cNvPr.set('descr', tag); pic.name = tag
+    # the tag (slide.n.assetkey, used to swap pictures in) goes in the title; the description stays the picture's alt text
+    tag = '%s.%d.%s' % (slide_id, n, key); cnv = pic._element.nvPicPr.cNvPr; cnv.set('title', tag); cnv.set('descr', it.get('alt') or ''); pic.name = tag
     if not emb: ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
     return pic
 
@@ -461,6 +462,7 @@ def build(src, out, fdb, picture_mode=C.PICTURE_MODE, only=None, template=None):
         if only and d['id'] not in only: continue
         layout = _layout(prs, d.get('layout'), template)
         slide = prs.slides.add_slide(layout); npic = 0
+        if d.get('notes'): slide.notes_slide.notes_text_frame.text = d['notes']     # speaker notes (<aside>) -> notes page, Slides imports them
         if not template:
             for ph in list(slide.placeholders): ph._element.getparent().remove(ph._element)
         used_ph = set()

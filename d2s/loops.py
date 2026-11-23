@@ -92,9 +92,11 @@ def make_all(work, max_w=None):
             if it.get('gif') and it.get('ground') and os.path.exists(it['ground']) and not it.get('_grounded'):
                 it['_grounded'] = True; k = items.index(it)
                 ground = dict(type='img', src=it['ground'], nw=1920, nh=1080, fit='fill', radius=0, shadow=None, op=1, pad=None, bw=None, cpath=None, ovclip=None, cx=960, cy=540, w=1920, h=1080, rot=0)
-                before = items[:k]; keep = [x for x in before if not (x['type'] == 'shape' and x.get('text')) and x['type'] not in ('line', 'link')]
-                lift = [x for x in before if x not in keep]          # text, lines and links stay above the ground
+                before = items[:k]
+                lift = [x for x in before if (x['type'] == 'shape' and x.get('text')) or x['type'] in ('line', 'link')]   # stay above the ground
+                keep = [x for x in before if x.get('bg') and x not in lift]   # the slide background colour; everything else is under the opaque ground
+                hidden = len(before) - len(lift) - len(keep)
                 sl['items'] = keep + [ground] + lift + items[k:]; items = sl['items']
-                rep.append('slide %s: ground picture under the looping drawing (%d text boxes kept above it)' % (sl['id'], sum(1 for x in lift if x.get('text'))))
+                rep.append('slide %s: ground picture under the looping drawing (%d text boxes kept above it, %d hidden shapes dropped)' % (sl['id'], sum(1 for x in lift if x.get('text')), hidden))
     json.dump(data, open(sj, 'w'), indent=1)
     return rep

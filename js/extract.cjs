@@ -209,10 +209,10 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         if (ov.inheritR > radius) radius = ov.inheritR;
         const ovclip = ov.out.length ? ov.out : null;
         const sh = shadow(cs);
-        if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op, qi: [...document.querySelectorAll('svg')].indexOf(el) }); continue; }
+        if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op, qi: [...document.querySelectorAll('svg')].indexOf(el), alt: el.getAttribute('aria-label') || '' }); continue; }
         if (el.tagName === 'IMG') {
           { const ibg = col(cs.backgroundColor); if (ibg && ibg.a > 0) items.push({ type: 'shape', ...g, op, radius, ell, fill: ibg, grad: null, stroke: null, shadow: null }); }
-          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, cpath, ovclip, border: uniform && bw.l > 0 ? { c: col(cs.borderTopColor), w: bw.l } : null, ...g });
+          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, cpath, ovclip, alt: el.getAttribute('alt') || '', border: uniform && bw.l > 0 ? { c: col(cs.borderTopColor), w: bw.l } : null, ...g });
         } else {
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
           if ((bg && bg.a > 0) || grad || uniform || hasText) {
@@ -232,7 +232,8 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         }
       }
       const links = [...sec.querySelectorAll('a[href]')].filter(a => !a.textContent.trim()).map(e => ({ type: 'link', href: e.href, ...geom(e.offsetWidth ? e : e.parentElement, R) }));
-      return { i: si, id: sec.id, layout: sec.dataset.layout || null, warns, items: items.concat(links) };
+      const aside = sec.querySelector(':scope > aside');   // speaker notes: plain text, carried to the PPTX notes page
+      return { i: si, id: sec.id, layout: sec.dataset.layout || null, warns, items: items.concat(links), notes: aside ? aside.textContent.trim() : '' };
     });
   });
   const hideSt = await p.addStyleTag({ content: 'img,svg{visibility:hidden !important}' });

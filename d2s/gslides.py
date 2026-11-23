@@ -1,8 +1,7 @@
 """Builders for the Google Slides batchUpdate requests and parsers for the (masked) presentation reads. Pure functions: the
 agent passes JSON saved from `read_presentation` in, and pastes the returned request list into `update_presentation`."""
-import json
+import json, re
 
-READ_ELEMENTS_MASK = ['revisionId', 'slides.objectId', 'slides.pageElements(objectId,description)']
 READ_IMAGES_MASK = ['revisionId', 'slides.objectId', 'slides.pageElements(objectId,description,image.contentUrl)']
 
 def _elements(pres):
@@ -12,9 +11,15 @@ def _elements(pres):
 def page_ids(pres): return [s['objectId'] for s in pres.get('slides', [])]
 def revision(pres): return pres.get('revisionId')
 
+READ_ELEMENTS_MASK = ['revisionId', 'slides.objectId', 'slides.pageElements(objectId,title,description)']
+
 def ids_by_tag(pres):
-    """description (the tag build wrote into each picture) -> picture objectId, for the converted deck."""
-    return {e['description']: e['objectId'] for _, _, e in _elements(pres) if e.get('description')}
+    """tag (slide.n.assetkey, written by the build into each picture's title; older builds used the description) -> picture objectId."""
+    out = {}
+    for _, _, e in _elements(pres):
+        for f in ('description', 'title'):        # title wins: the description now holds the picture's alt text
+            if e.get(f) and re.match(r'^[\w-]+\.\d+\.im[0-9a-z]+$', e[f]): out[e[f]] = e['objectId']
+    return out
 
 def bundle_urls(pres):
     """asset key -> temporary image URL (about 30 minutes), read from an uploaded bundle presentation."""
