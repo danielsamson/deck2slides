@@ -7,7 +7,7 @@ READ_IMAGES_MASK = ['revisionId', 'slides.objectId', 'slides.pageElements(object
 
 def _elements(pres):
     for si, s in enumerate(pres.get('slides', [])):
-        for e in s.get('pageElements', []): yield si, s['objectId'], e
+        for e in s.get('pageElements', []): yield si, s.get('objectId'), e
 
 def page_ids(pres): return [s['objectId'] for s in pres.get('slides', [])]
 def revision(pres): return pres.get('revisionId')

@@ -321,6 +321,11 @@ alignment 0.00 (0), wrapping 0.51 (3), corner-radius 0.52 (1), borders 0.52 (0),
 text-styles 1.83 (4: the mixed-size line wraps in Google), layering 3.06 (clip and group opacity), unsupported 19.50 (dropped features), composite 0.33 (0).
 7 of 20 slides under 0.15%.
 
+**Magic Circle deck (12 slides, Google Sans from uploaded files, `report --ref full`, 192 dpi PDF export):** before calibration (v6) 31 text blocks
+more than 4 px off, pixel difference 0.71-6.86 % per slide; with `examples/google-sans-calibration.json` (v7) **8 blocks** (small labels next to icons,
+not visible side by side; slide 4's 355 px is a pairing artefact), **0.35-2.22 %** on static slides. Slides 5 and 12 stay about 4 % because the browser
+render shows the animation at rest and Google shows the GIF's first frame.
+
 **Pitch deck regression** (final code, text and shapes; the real pictures were not available, so 189 dummy grey pictures were embedded and masked out of the comparison; all 28 slides, 2000 px thumbnails):
 committed OLD pipeline 27 of 28 slides under 0.15% (worst `toy` 1.20%, pixel difference summed over the deck 1.39), 0 text blocks more than 4 px off; **current code 27 of 28 under 0.15% (worst `toy-cast` 0.28%, sum 0.52), 0 text blocks more than 4 px off**.
 Along the way: an earlier "30 blocks off" for the committed NEW file was an artifact (its opaque grey placeholder pictures covered the slides; proved by looking at the render, fixed by making the placeholder transparent),

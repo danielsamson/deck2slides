@@ -10,7 +10,7 @@ def deck(extra=()):
     return {'content': {'revisionId': 'r1', 'slides': [{'objectId': 'p1', 'pageElements': els}]}}
 
 def bundle(*keys):
-    return {'content': {'slides': [{'objectId': 's%d' % i, 'pageElements': [{'description': k, 'image': {'contentUrl': 'https://x/' + k}}]} for i, k in enumerate(keys)]}}
+    return {'content': {'slides': [{'pageElements': [{'description': k, 'image': {'contentUrl': 'https://x/' + k}}]} for k in keys]}}   # as the connector returns it: no slide objectId with this mask
 
 def test_matches_by_tag_not_position():
     reqs, report, problems = gslides.swap_plan(MAN, deck(), [bundle('ima'), bundle('imvid')])
