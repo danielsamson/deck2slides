@@ -256,6 +256,10 @@ python3 d2s.py calib-fit <work> <dir> -o calibration.json  # dy per font and lin
 python3 d2s.py convert ... --calibration calibration.json
 ```
 
+Uploaded faces (`src`) and their sibling weight files are copied into the calibration deck. Measured so far: `examples/google-sans-calibration.json`
+(Google Sans from the deck's own files: Google's line pitch is 0.955 of hhea; first-line offsets -0.02 to -0.13 of the font size between line
+heights 0.9 and 1.5, in 1-px steps, so about 0.5 px noise).
+
 ## Agent checklist for a conversion (connector steps)
 
 1. `d2s.py convert` as above (`D2S_LOOPS=0` for a quick build without GIFs: 1.5 min instead of 6-10; GIFs are only placed correctly by a full build).

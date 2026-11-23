@@ -4,7 +4,7 @@ then compares Google's rendering with the browser's and writes calibration.json:
   fonts[family].dy      [[css line-height, first-line offset as a fraction of font size], ...]   (Google minus browser, px/px)
   fonts[family].natural line-height/em as Google behaves, only written when it differs >1% from the font file's hhea value
 Run once per set of fonts; the file is reusable for every deck that uses those fonts."""
-import json, os
+import json, re, os
 import numpy as np
 from .imgdiff import load, ink_bbox
 
@@ -23,7 +23,21 @@ def make_deck(deck_json, fonts_used, outdir, weights=(400,)):
                 html.append('<div style="position:absolute;left:%dpx;top:%dpx;width:%dpx;font-family:\'%s\';font-weight:%d;font-size:%dpx;line-height:%s;color:#000">%s</div>' % (x, y, CELL_W - 20, fam, w, FS, lh, '<br>'.join('EH'[i % 2] for i in range(NLINES))))
                 cells.append(dict(slide=si + 1, fam=fam, w=w, lh=lh, box=[x - 12, y + 2, x + CELL_W - 12, y + ROW_H - 40]))
         html.append('</section>'); open('%s/slides/%s.html' % (outdir, sid), 'w').write('\n'.join(html))
-    json.dump(dict(v=5, title='calibration', order=order, faces={k: v for k, v in src['faces'].items() if v['family'] in fams}), open(outdir + '/deck.json', 'w'))
+    keep = {k: v for k, v in src['faces'].items() if v['family'] in fams}
+    # uploaded faces (src: project/... or /_blob/<id>): copy the files, and their sibling weight files, so the calibration deck renders them
+    import shutil, glob as _glob
+    root = os.path.dirname(os.path.abspath(deck_json))
+    for v in keep.values():
+        s_ = v.get('src')
+        if not s_: continue
+        if s_.startswith('/_blob/'): files = _glob.glob(os.path.join(root, 'blobs', s_[len('/_blob/'):] + '*')); rel = 'blobs'
+        else: files = [os.path.join(root, s_[len('project/'):] if s_.startswith('project/') else s_)]; rel = os.path.dirname(s_[len('project/'):] if s_.startswith('project/') else s_)
+        for f in files:
+            if not os.path.exists(f): continue
+            os.makedirs(os.path.join(outdir, rel), exist_ok=True)
+            m = re.match(r'^(.+?)-(\d{3})\.(woff2?|ttf|otf)$', os.path.basename(f))
+            for g in ([x for x in _glob.glob(os.path.join(os.path.dirname(f), m.group(1) + '-*')) ] if m else [f]): shutil.copy(g, os.path.join(outdir, rel))
+    json.dump(dict(v=5, title='calibration', order=order, faces=keep), open(outdir + '/deck.json', 'w'))
     open(outdir + '/deck.css', 'w').write('section{background:#fff;color:#000;padding:0;display:block}')
     json.dump(cells, open(outdir + '/cells.json', 'w'), indent=1); return cells
 
