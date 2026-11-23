@@ -255,17 +255,18 @@ python3 d2s.py convert ... --calibration calibration.json
 
 ## Agent checklist for a conversion (connector steps)
 
-1. `d2s.py convert` as above. Note `deck.pptx` and `pack/`.
-2. Drive `create_file`, `contentMimeType: application/vnd.openxmlformats-officedocument.presentationml.presentation`
-   (converts to Google Slides), `parentId` = the test/output folder. Preferred: `base64Content` as a file reference
-   `sha256:<hash>:<absolute path>` (worked in the last session for files under the working directory). If it is refused, a session
-   that has file references must upload it (see Known constraint above).
-3. `read_presentation` with `fields` = `gslides.READ_ELEMENTS_MASK` -> save the JSON; `gslides.ids_by_tag` gives picture object ids.
-4. For each `pack_NN.pptx`: upload it, `read_presentation` with `READ_IMAGES_MASK`, `gslides.bundle_urls` -> urls (valid ~30 min), then
-   `d2s.py requests <work> tags.json urls.json` and send the list in one `update_presentation` with
-   `writeControl.requiredRevisionId` from a fresh read. Finish a bundle before starting the next.
-5. Images: PDF export through Drive `download_file_content` (`exportMimeType: application/pdf`) + `pdf2png`, or one
-   `read_slide_page_thumbnail` (LARGE) per slide saved as `pN.png`.
+1. `d2s.py convert` as above (`D2S_LOOPS=0` for a quick build without GIFs: 1.5 min instead of 6-10; GIFs are only placed correctly by a full build).
+   Note `deck.pptx` and `pack/` (`pack/list.txt` has the file references and the keys in each bundle).
+2. Drive `create_file` for the deck and every `pack_NN.pptx`, `contentMimeType: application/vnd.openxmlformats-officedocument.presentationml.presentation`
+   (converts to Google Slides), **`parentId` = a Drive folder (required for anything over 0.85 MB)**, `base64Content` = the file reference
+   `sha256:<hash>:<absolute path>`. Each file must be under about 3.1 MB.
+3. `read_presentation` of the deck with `fields` = `gslides.READ_ELEMENTS_MASK`, and of each bundle with `READ_IMAGES_MASK` (bundle links last
+   about 30 minutes). Save each result **as returned** to a file (`deck.json`, `b1.json`, ...).
+4. `d2s.py swap <work> deck.json b1.json b2.json ...` matches every placeholder to its bundle picture **by asset tag** and writes
+   `<work>/swap.json` (`requests` + `writeControl`). It exits with a list of problems if any placeholder or bundle picture is unmatched: do not
+   send a partial plan. Send `requests` in one `update_presentation` with that `writeControl`.
+5. Check in Google, not by eye on thumbnails: PDF export through Drive `download_file_content` (`exportMimeType: application/pdf`) + `pdf2png`,
+   or `read_slide_page_thumbnail` with `WIDTH2000_PX`; look at crops with boosted contrast for soft areas (glows, GIF edges).
 6. `d2s.py report <work> <dir> [--ref noimg|full] [--ignore-pictures] [--diffs <outdir>]`.
 7. Name every test file `TEST deck-to-slides ...` and keep them in a Drive folder (`deck2slides-tests/{calibration,features,regression,scratch}`).
 

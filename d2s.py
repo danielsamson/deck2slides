@@ -62,6 +62,21 @@ def requests(a):
     else: reqs, missing = gslides.replace_shape_requests(urls.keys(), urls), []
     print('missing elements:', missing, file=sys.stderr); print(gslides.dump(reqs))
 
+def swap(a):
+    """d2s.py swap <work> <deck read> <bundle read>... : replaceImage requests for every placeholder, matched by asset tag.
+    The reads are the JSON the Slides connector returned (saved to files as they are). Writes <work>/swap.json and prints the plan."""
+    m = json.load(open(a.work + '/manifest.json'))
+    deck = json.load(open(a.deck)); bundles_ = [json.load(open(f)) for f in a.bundles]
+    reqs, report, problems = gslides.swap_plan(m, deck, bundles_)
+    for line in report: print(line)
+    rev = gslides.revision(gslides.unwrap(deck))
+    out = dict(requests=reqs, writeControl={'requiredRevisionId': rev} if rev else None, problems=problems)
+    json.dump(out, open(a.work + '/swap.json', 'w'), indent=1)
+    print('%d requests -> %s/swap.json' % (len(reqs), a.work))
+    if problems:
+        for p_ in problems: print('PROBLEM:', p_, file=sys.stderr)
+        sys.exit(2)
+
 def tokens_cmd(a):
     import json, os
     if a.src.endswith('.pptx'):
@@ -155,6 +170,7 @@ c = sub.add_parser('convert'); c.add_argument('deck'); c.add_argument('work'); c
 c = sub.add_parser('calib-deck'); c.add_argument('deck'); c.add_argument('work'); c.add_argument('--assets'); c.set_defaults(f=calib_deck)
 c = sub.add_parser('calib-fit'); c.add_argument('work'); c.add_argument('thumbs'); c.add_argument('-o'); c.set_defaults(f=calib_fit)
 c = sub.add_parser('pdf2png'); c.add_argument('pdf'); c.add_argument('out'); c.set_defaults(f=pdf2png)
+c = sub.add_parser('swap'); c.add_argument('work'); c.add_argument('deck'); c.add_argument('bundles', nargs='+'); c.set_defaults(f=swap)
 c = sub.add_parser('requests'); c.add_argument('work'); c.add_argument('tags'); c.add_argument('urls'); c.set_defaults(f=requests)
 c = sub.add_parser('pptx2claude'); c.add_argument('pptx'); c.add_argument('out'); c.add_argument('--calibration'); c.set_defaults(f=pptx2claude_cmd)
 c = sub.add_parser('tokens'); c.add_argument('src'); c.add_argument('out'); c.add_argument('--masters'); c.add_argument('--extra'); c.add_argument('--bg'); c.add_argument('--full'); c.add_argument('--catalogue'); c.add_argument('--recipes'); c.add_argument('--images'); c.add_argument('--curation'); c.add_argument('--name'); c.add_argument('--build', action='store_true'); c.add_argument('--tagline'); c.add_argument('--no-fonts', action='store_true'); c.set_defaults(f=tokens_cmd)
