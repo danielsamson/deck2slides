@@ -174,6 +174,17 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         { // elements Google cannot draw natively (blur, group opacity over overlapping children) are rendered alone to a transparent picture
           const blur = /blur\(/.test(cs.filter); let grp = false;
           if (!blur && +cs.opacity < 1 && el.children.length > 1) { const rs = [...el.querySelectorAll('*')].filter(d => { const c3 = getComputedStyle(d); const bg3 = col(c3.backgroundColor); return d.tagName === 'IMG' || (bg3 && bg3.a > 0); }).map(d => d.getBoundingClientRect()); for (let a = 0; a < rs.length && !grp; a++) for (let b2 = a + 1; b2 < rs.length; b2++) if (Math.min(rs[a].right, rs[b2].right) - Math.max(rs[a].left, rs[b2].left) > 1 && Math.min(rs[a].bottom, rs[b2].bottom) - Math.max(rs[a].top, rs[b2].top) > 1) { grp = true; break; } }
+          const glass = cs.backdropFilter && cs.backdropFilter !== 'none';
+          if (glass && !blur && !grp) {
+            // backdrop-filter (frosted glass): Slides has no backdrop blur. The panel's own box is captured as the browser paints it,
+            // backdrop blur, tint, border and inset light included; its children stay native on top. Rounded mask and shadow are native.
+            const rid = 'g_' + (rasterId.n++); el.setAttribute('data-gs-glass', rid); const b = el.getBoundingClientRect();
+            const rv2 = parseFloat(cs.borderTopLeftRadius) || 0; const gr = Math.min(cs.borderTopLeftRadius.includes('%') ? Math.min(g.w, g.h) * rv2 / 100 : rv2, Math.min(g.w, g.h) / 2);
+            items.push({ type: 'img', src: 'GLASS:' + rid, nw: b.width, nh: b.height, fit: 'fill', radius: gr, shadow: shadow(cs), op, pad: null, bw: null, cpath: null, ovclip: null, ...g, page: { x: b.left + window.scrollX, y: b.top + window.scrollY, w: b.width, h: b.height } });
+            warns.push(el.tagName.toLowerCase() + ': backdrop-filter (' + cs.backdropFilter.split('(')[0] + ') drawn as a picture of the panel with its backdrop; text stays editable');
+            if (!textOwner.has(el)) continue;
+            el.__gsGlassed = true;      // its own text still becomes a text box (no fill, border or shadow: the picture has those)
+          }
           if (blur || grp) {
             const all = [el, ...el.querySelectorAll('*')]; for (const d of all) if (d !== el) rasterSkip.add(d);
             let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const d of all) { const r = d.getBoundingClientRect(); if (!r.width && !r.height) continue; x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
@@ -207,10 +218,12 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
           if ((bg && bg.a > 0) || grad || uniform || hasText) {
             const it = { type: 'shape', ...g, op, radius, ell, fill: bg && bg.a > 0 && !grad ? bg : null, grad, cpath, ovclip, stroke: uniform ? { c: bc.l, w: bw.l, dash: bst.l === 'dashed' ? 'dash' : bst.l === 'dotted' ? 'dot' : null, cmpd: bst.l === 'double' ? 'dbl' : null } : null, shadow: sh, pad, bw };
             if (hasText) { it.text = textOf(el, cs, g); if (el.dataset.role) it.role = el.dataset.role; }
+            if (el.__gsGlassed) Object.assign(it, { fill: null, grad: null, stroke: null, shadow: null });
             items.push(it);
           }
         }
-        if (!uniform && radius > 0.5) { for (const k of ['l', 'r', 't', 'b']) if (vis(k))   // rounded box: each side is a band that follows the corners (geomclip.band_poly)
+        if (el.__gsGlassed) { /* borders are in the glass picture */ }
+        else if (!uniform && radius > 0.5) { for (const k of ['l', 'r', 't', 'b']) if (vis(k))   // rounded box: each side is a band that follows the corners (geomclip.band_poly)
           items.push({ type: 'shape', ...g, op, radius: 0, ell: false, fill: bc[k], grad: null, cpath: null, ovclip, stroke: null, shadow: null, band: { k, bw: { l: vis('l') ? bw.l : 0, r: vis('r') ? bw.r : 0, t: vis('t') ? bw.t : 0, b: vis('b') ? bw.b : 0 }, r: radius } }); }
         else if (!uniform) for (const k of ['l', 'r', 't', 'b']) if (vis(k)) {
           const hw = g.w / 2, hh = g.h / 2, o = bw[k] / 2;
@@ -241,6 +254,23 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         await p3.evaluate(r => document.querySelector('[data-gs-id="' + r + '"]').removeAttribute('data-gs-r'), rid);
         it.src = f; delete it.page; }
       await p3.close(); } }
+  // Glass panels: the page as painted up to the panel (everything after it in the document and the panel's own children hidden),
+  // clipped to the panel's box.
+  const glassItems = []; for (const d of data) for (const it of d.items) if (typeof it.src === 'string' && it.src.startsWith('GLASS:')) glassItems.push(it);
+  if (glassItems.length) {
+    fs.mkdirSync(path.join(OUT, 'raster'), { recursive: true });
+    for (const it of glassItems) {
+      const rid = it.src.slice(6), f = path.join(OUT, 'raster', rid + '.png');
+      await p.evaluate(r => { const el = document.querySelector('[data-gs-glass="' + r + '"]'); const sec = el.closest('section'); window.__gsHidden = [];
+        window.__gsColor = [el, el.style.color, el.style.webkitTextFillColor]; el.style.setProperty('color', 'transparent', 'important'); el.style.setProperty('-webkit-text-fill-color', 'transparent', 'important');   // its own text stays native
+        for (const e of sec.querySelectorAll('*')) if ((el.contains(e) && e !== el) || (!e.contains(el) && (el.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING))) { window.__gsHidden.push([e, e.style.visibility]); e.style.setProperty('visibility', 'hidden', 'important'); }
+      }, rid);
+      await p.screenshot({ path: f, clip: { x: it.page.x, y: it.page.y, width: it.page.w, height: it.page.h }, fullPage: true });
+      await p.evaluate(() => { for (const [e, v] of window.__gsHidden) { e.style.removeProperty('visibility'); if (v) e.style.visibility = v; }
+        const [el, c, f] = window.__gsColor; el.style.removeProperty('color'); el.style.removeProperty('-webkit-text-fill-color'); if (c) el.style.color = c; if (f) el.style.webkitTextFillColor = f; });
+      it.src = f; delete it.page;
+    }
+  }
   // Inline SVG (icons, the branching-lives drawing) has no native equivalent in Slides: each becomes a small transparent picture.
   // The deck CSS goes in too: an SVG can lean on it (transform-origin / transform-box on classed groups); without it scaled groups drift to the corner.
   const p2 = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 3 });
@@ -262,7 +292,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     fs.writeFileSync(live, fs.readFileSync(path.join(OUT, 'preview.html'), 'utf8').replace('\n*{animation:none !important}', ''));
     const p4 = await b.newPage({ viewport: { width: SLIDE_W, height: SLIDE_H }, deviceScaleFactor: 1 });
     await p4.goto('file://' + live); await p4.waitForTimeout(1500); await p4.evaluate(() => document.fonts.ready);
-    const FPS = +(process.env.D2S_LOOP_FPS || 12), MAXP = +(process.env.D2S_LOOP_MAX_S || 18) * 1000;
+    const FPS = +(process.env.D2S_LOOP_FPS || 12), MAXP = +(process.env.D2S_LOOP_MAX_S || 18) * 1000, C_LOOP_FULL = +(process.env.D2S_LOOP_FULL || 0.35);
     for (const [si, it] of svgItems) {
       const plan = await p4.evaluate(({ qi, si, MAXP }) => {
         const svg = document.querySelectorAll('svg')[qi]; const sec = document.querySelectorAll('section')[si]; if (!svg || !sec) return null;
@@ -282,7 +312,14 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         return { P, change: +(cost * 100).toFixed(1), durs, newDurs: loops.map(a => a.effect.getTiming().duration) };
       }, { qi: it.qi, si, MAXP });
       if (!plan) continue;
-      const x0 = Math.max(0, it.cx - it.w / 2), y0 = Math.max(0, it.cy - it.h / 2), x1 = Math.min(SLIDE_W, it.cx + it.w / 2), y1 = Math.min(SLIDE_H, it.cy + it.h / 2);
+      let x0 = Math.max(0, it.cx - it.w / 2), y0 = Math.max(0, it.cy - it.h / 2), x1 = Math.min(SLIDE_W, it.cx + it.w / 2), y1 = Math.min(SLIDE_H, it.cy + it.h / 2);
+      if ((x1 - x0) * (y1 - y0) > C_LOOP_FULL * SLIDE_W * SLIDE_H) {
+        // a big drawing: record the whole slide, so no edge where the GIF's baked background meets Slides' own drawing of it
+        // (a visible seam on soft glows). Text is made transparent: it stays native on top.
+        x0 = 0; y0 = 0; x1 = SLIDE_W; y1 = SLIDE_H;
+        await p4.evaluate(({ qi, si }) => { const svg = document.querySelectorAll('svg')[qi]; const sec = document.querySelectorAll('section')[si];
+          for (const e of sec.querySelectorAll('*')) if (!svg.contains(e)) { e.style.setProperty('color', 'transparent', 'important'); e.style.setProperty('-webkit-text-fill-color', 'transparent', 'important'); } }, { qi: it.qi, si });
+      }
       const n = Math.max(2, Math.round(plan.P / 1000 * FPS)), dir = path.join(OUT, 'loops', it.id); fs.mkdirSync(dir, { recursive: true });
       for (let f = 0; f < n; f++) {
         await p4.evaluate(t => window.__d2sLoops.forEach(a => { a.currentTime = a._d2s0 + t; }), f * plan.P / n);
