@@ -81,6 +81,9 @@ Process lessons: check in Google at full size and boosted contrast, never on thu
 placeholders by asset tag, never by position (a GIF went onto the wrong picture); a quick build without GIFs (`D2S_LOOPS=0`) takes 1.5 minutes,
 a full one 6-10.
 
+Regression for these fixes: `python3 test-decks/regress-magic/check.py` (generates a 7-slide deck, one slide per row above, converts it and
+checks 21 properties of the result offline; `D2S_SLOW=1 pytest` runs it too). Unit tests: `tests/test_magic_fixes.py`, `tests/test_swap.py`.
+
 ## Animation as GIFs (`d2s/loops.py`)
 
 Slides plays animated GIFs (verified: the stored picture keeps all frames) and nothing else that moves. The converter finds two sources:
