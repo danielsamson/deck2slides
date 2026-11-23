@@ -292,7 +292,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     fs.writeFileSync(live, fs.readFileSync(path.join(OUT, 'preview.html'), 'utf8').replace('\n*{animation:none !important}', ''));
     const p4 = await b.newPage({ viewport: { width: SLIDE_W, height: SLIDE_H }, deviceScaleFactor: 1 });
     await p4.goto('file://' + live); await p4.waitForTimeout(1500); await p4.evaluate(() => document.fonts.ready);
-    const FPS = +(process.env.D2S_LOOP_FPS || 12), MAXP = +(process.env.D2S_LOOP_MAX_S || 18) * 1000, C_LOOP_FULL = +(process.env.D2S_LOOP_FULL || 0.35);
+    const FPS = +(process.env.D2S_LOOP_FPS || 12), MAXP = +(process.env.D2S_LOOP_MAX_S || 18) * 1000;
     for (const [si, it] of svgItems) {
       const plan = await p4.evaluate(({ qi, si, MAXP }) => {
         const svg = document.querySelectorAll('svg')[qi]; const sec = document.querySelectorAll('section')[si]; if (!svg || !sec) return null;

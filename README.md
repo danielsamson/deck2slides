@@ -9,17 +9,22 @@ How: lay every slide out in headless Chromium at 1920x1080 (`js/extract.cjs`) ->
 
 ## Status (read this first)
 
-Verified against Google in the last session (Inter and Bricolage Grotesque for the feature deck; Bricolage, Instrument Sans, Inter and
-Fredoka for the pitch deck regression). Numbers are in "Test results" below. **Not verified:** other fonts, animated GIF playback,
-GIFs over the upload cap (link route), inline SVG pictures, the pitch deck with its real pictures (only text and shapes were compared),
-(all 28 pitch slides were measured on the final code).
+Verified against Google: Inter and Bricolage Grotesque (feature deck); Bricolage, Instrument Sans, Inter and Fredoka (pitch deck regression);
+Google Sans from uploaded font files (Magic Circle deck, 12 slides, see that section). Numbers are in "Test results" below. GIFs keep their animation
+through PPTX import and `replaceImage` (frame count read back from the stored picture). **Not verified:** other fonts, GIF playback timing in
+present mode, the pitch deck with its real pictures (only text and shapes were compared).
 
 Offline regression: the pitch deck (28 slides) rebuilt with this package plus `examples/pitch-legacy-calibration.json` gives 819 shapes,
 803 identical to the old build in position, size, text and line spacing.
 
-**Known constraint:** file-reference uploads (Drive `create_file` with `base64Content = sha256:<hash>:<absolute path>`) work in some
-sessions and not others; when they do not, a session that has them must do the upload. When they work, the file must sit **inside the
-session's working directory** (a path outside it was refused with "either does not exist or can't be sent by reference"), and, per the experiment below, a 3.03 MB file uploaded fine and a 6 MB one was refused by the connector (4.2 MB per call); the old 0.85 MB figure was wrong. Hand-typed base64 is not dependable.
+**Upload rules (measured, Magic Circle session):** file-reference uploads (Drive `create_file` with `base64Content = sha256:<hash>:<absolute path>`)
+work for files under the session's working directory or scratchpad. **Always pass `parentId` (a Drive folder):** without it, anything over about
+0.85 MB fails with the misleading error "Requested entity was not found" (100-800 KB went through, 1 MB did not, from any folder); with
+`parentId` set, 1 MB, 2.5 MB and 2.9 MB uploads all worked. The two older, conflicting figures (0.85 MB vs 3 MB) were this difference. Hard limits
+of the connector: **about 3.1 MB of file per call** ("over the 4.2 MB limit on each connector call") and **10 MB refused outright**. Slides itself
+accepts pictures up to 50 MB, so anything bigger than the call limit (HQ GIFs) is swapped in by hand (Replace image > Upload from computer).
+Drive `update_file` only changes metadata: a new PPTX cannot replace the contents of an existing Slides file from here, so a shape-level fix
+means a new file. Pictures, text and element positions can be patched in place with `update_presentation`.
 
 **Other measured constraints:** the Slides MCP rate-limits thumbnail reads ("Expensive read requests per minute", about 27 in a
 minute); do them in batches of about 14. Thumbnail URLs are long: copy them into a file by script, not by hand (hand copies of 200-character URLs went wrong
@@ -38,15 +43,60 @@ cards, pills, circles, ellipses and rounded boxes with text inside (radii up to 
 - Pictures beyond the upload budget (about 2.7 MB of images per deck) are placeholders filled by `replaceImage` (second step, 30-minute links) and lose opacity and clip fit.
 - GIFs always go through the placeholder route; over the cap they need a Drive folder shared by link (manual).
 
-**Drawn as a picture instead of natively (warned; its text is no longer editable):** blur, and group opacity over overlapping children.
+**Drawn as a picture instead of natively (warned):** blur and group opacity over overlapping children (their text is part of the picture);
+`backdrop-filter` glass panels (the panel's box as the browser paints it, backdrop included; **its text stays editable** on top, the rounded mask and
+drop shadow are native); inline SVG (transparent picture, rendered **with the deck CSS**, which SVGs often rely on for `transform-origin`).
+
+**Animated (GIF):** inline SVG with infinite CSS animations, and `<img>` with an animated WebP (a video loop), become looping GIFs (`d2s/loops.py`):
+an upload copy that fits one connector call and an HQ copy for replacing by hand. See 'Animation as GIFs'.
 
 **Does not work (lost in the export; the converter prints a warning for each):** blend modes over anything but a flat colour,
-`background-image` other than a single gradient, rounded `inset()` clips, animation and transitions (not attempted).
+`background-image` other than a single gradient, rounded `inset()` clips, radial-gradient sizes in px and positions other than percentages,
+entrance animations and transitions (the finished state is exported).
 
-**Not tested, so unknown:** other fonts; GIF playback (only the first frame was seen); inline SVG; real pitch-deck pictures; 
-gradient text, off-centre radial gradients; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B); re-templating into company layouts (route C: see 'Using a company template').
+**Not tested, so unknown:** other fonts; real pitch-deck pictures; gradient text; tables or charts built from HTML; speaker notes; Claude's own PowerPoint exporter (route B); re-templating into company layouts (route C: see 'Using a company template').
 
 **Needs a template and tags:** real placeholders and master/theme linkage (nothing in a plain Claude deck says which box is a title): use `--template` with `data-layout` and `data-role` (see above).
+
+## What a real deck exposed (Magic Circle, Think with Google system, 12 slides)
+
+A hand-built 28-slide Claude deck (first 12 converted), with uploaded Google Sans files, inline SVG art with CSS loops, an animated WebP,
+glass panels and soft radial glows. Each row was seen wrong in Google, fixed, and checked again in Google:
+
+| Seen in Google | Cause | Fix (where) |
+|---|---|---|
+| Wrong font metrics; uploaded faces ignored | `faces` with `src` (uploaded file) were not loaded | `@font-face` from the file; line metrics from it (`extract.cjs`, `fonts.local_face_file`) |
+| Bold heavier and wider than the browser; one word wrapping differently | the deck ships only the 400 file, so the browser *fakes* bold; Google uses the real bold | sibling weight files (`GoogleSans-700.woff2`) are registered so text is measured in the real bold |
+| Unknown font name | `Google Sans Display` is a deck alias for the 700 file | `config.FACE_ALIAS` writes Google Sans 700 |
+| Drawings with a lump, off-centre rings | inline SVG rasterised without the deck CSS (`transform-origin` on classed groups) | SVGs rendered with the deck CSS |
+| Banding on every soft glow | bundles cut over-limit PNGs to a 256-colour palette | shrink (Slides serves 2048 px at most), keep full colour (`bundles.py`) |
+| Picture circles without their border; rounded squares instead of circles | border on the `<img>` itself never drawn; a 256 px radius on a 128 px box not clamped | border = shape behind the picture (carries the shadow); CSS inner radius; radii clamp to half the box (`pptx_build`, `extract`) |
+| Cards with square corners | `border-top` on a rounded box drawn as a straight strip | one-sided borders on rounded boxes are bands that follow the corners (`geomclip.band_poly`) |
+| Soft glows ending in a hard circle | `radial-gradient(closest-side …)` and `at x% y%` ignored; OOXML radial fills reach the box corners | stops compressed by 1/sqrt(2) for `*-side`; `fillToRect` centre (`pptx_build.gradfill`) |
+| "close-up" wrapping differently | browser broke the word after the hyphen; Slides does not | the word is split there and the block keeps its line breaks |
+| Sharp background through glass panels | `backdrop-filter` has no equivalent | panel captured with its backdrop; text, mask and shadow native |
+| Animations frozen on one frame | CSS loops and animated WebP | GIFs (next section) |
+
+Process lessons: check in Google at full size and boosted contrast, never on thumbnails (a pink GIF band was missed that way); match pictures to
+placeholders by asset tag, never by position (a GIF went onto the wrong picture); a quick build without GIFs (`D2S_LOOPS=0`) takes 1.5 minutes,
+a full one 6-10.
+
+## Animation as GIFs (`d2s/loops.py`)
+
+Slides plays animated GIFs (verified: the stored picture keeps all frames) and nothing else that moves. The converter finds two sources:
+- an inline `<svg>` with infinite CSS animations (on it, inside it or on an ancestor). `extract.cjs` records one loop period by pausing the
+  animations and stepping `currentTime` (deterministic frames, 12 fps). Durations are nudged so every loop closes in one period, at most a few
+  per cent (reported; 16 s, 9 s, 6 s became 16.9 s, 8.45 s, 5.63 s);
+- an `<img>` whose file is an animated WebP/APNG (a video loop): its own frames and timing.
+
+GIF has one-bit transparency and 256 colours, so a drawing's **ground** (everything painted before it, text made transparent) is captured as a
+full-slide picture under the GIF, and the GIF covers the drawing only, with its background baked in from the same render: no seam where the GIF
+meets the slide, and no large flat area for GIF compression to streak (both happened on the way: a lavender seam, then a pink speckled band).
+Text stays native on top.
+
+Each loop gets two files: `gifs/<name>.gif` fits one connector call (`GIF_UPLOAD_KB`, gifsicle `--lossy=40`, narrower and fewer fps until it fits)
+and goes into the deck; `gifs/hq/<name>.gif` (`GIF_HQ_KB`, `--lossy=20`, full size) is swapped in by hand. Encodes are cached by a hash of the frames.
+Error-diffusion dither (`sierra2_4a`) and one palette per GIF; `--lossy` above about 60 streaks flat soft areas, lossless forces the size down.
 
 ## Using a company template (route A + C in one step)
 
@@ -85,6 +135,11 @@ Most gaps disappear if the deck is written with the export in mind:
 5. Keep to one font family list per deck from the calibrated set (Inter, Bricolage Grotesque, Instrument Sans, Fredoka) or run `calib-deck` for new ones.
 6. With a company template: tag titles, subtitles and body text with `data-role`, set `data-layout` on each slide, and keep decorative shapes untagged.
 7. Total picture weight: about 2.7 MB of images fits in the uploaded file; beyond that pictures fall back to the second step (no opacity or clip fit), GIFs always do.
+8. Uploaded fonts: upload every weight you use (`Family-400.woff2`, `Family-700.woff2` next to each other). With only the regular file the browser
+   fakes bold, Google uses the real bold, and lines can wrap differently.
+9. Loops: keep looping animation inside one inline `<svg>` (or an animated WebP) so it can become one GIF; slow, soft loops encode best. Entrance
+   animations are exported in their finished state.
+10. Radial glows: `closest-side`/`farthest-side` and `at x% y%` carry over; px sizes and keyword positions do not.
 
 ## The five-page test piece (same deck in three apps)
 
@@ -178,7 +233,7 @@ What each route gives you, and what was tested. "Tested" means run end to end in
 ```
 pip install -r requirements.txt          # python-pptx Pillow lxml numpy scipy fonttools brotli pytest shapely
 npm i -g playwright                      # Chromium is needed; export NODE_PATH=$(npm root -g)
-apt-get install -y gifsicle ffmpeg poppler-utils   # clips and PDF -> PNG only
+apt-get install -y gifsicle ffmpeg poppler-utils   # GIFs (loops, clips) and PDF -> PNG; gifsicle cuts GIF sizes by about 4x
 
 python3 d2s.py convert <deck dir> <work dir> [--assets map.json] [--gifs dir] [--calibration calibration.json] [--picture-mode mask|shape]
 ```
