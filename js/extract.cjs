@@ -32,7 +32,12 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
     if (f.href) return '<link rel="stylesheet" href="' + f.href + '">';
     const fp = f.src && resolveImg(f.src.replace(/^project\//, ''), 'faces');
     if (!fp || !fs.existsSync(fp)) { console.log('UNMAPPED FONT', f.family, f.src); return ''; }
-    return '<style>@font-face{font-family:"' + f.family + '";src:url("file://' + fp + '")}</style>';
+    // Sibling files of the same family by weight (GoogleSans-400 / GoogleSans-700) are registered too, so bold text is
+    // measured with the real bold Google will draw, not the browser's synthetic bold (narrower: lines wrapped differently).
+    const m0 = /^(.+?)-(\d{3})\.(woff2?|ttf|otf)$/i.exec(path.basename(fp)); const w0 = m0 ? +m0[2] : 400;
+    const sibs = m0 ? fs.readdirSync(path.dirname(fp)).map(n => /^(.+?)-(\d{3})\.(woff2?|ttf|otf)$/i.exec(n)).filter(m => m && m[1] === m0[1] && +m[2] > w0).sort((a, b) => a[2] - b[2]) : [];
+    const cuts = sibs.map(m => +m[2]); const faces = [[fp, 1, cuts.length ? cuts[0] - 1 : 1000]].concat(sibs.map((m, i) => [path.join(path.dirname(fp), m[0]), +m[2], i + 1 < cuts.length ? cuts[i + 1] - 1 : 1000]));
+    return '<style>' + faces.map(([file, lo, hi]) => '@font-face{font-family:"' + f.family + '";src:url("file://' + file + '");font-weight:' + lo + ' ' + hi + '}').join('') + '</style>';
   }).join('');
   let html = '<!doctype html><meta charset="utf-8">' + fonts + '<style>*{margin:0}body{background:#444}section{position:relative;width:1920px;height:1080px;box-sizing:border-box;overflow:hidden;margin-bottom:20px}hr{border:0}img{display:block}aside{display:none}x-shape{display:block}x-shape[kind=ellipse]{border-radius:50%}x-icon{display:block}section>*{position:relative}' + css + '\n*{animation:none !important}</style>';
   for (const id of deck.order) {
@@ -66,13 +71,20 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       if (kind === 'linear') {
         if (/deg$/.test(parts[0])) { angle = parseFloat(parts[0]); i = 1; }
         else if (/^to /.test(parts[0])) { const mp = { 'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270, 'to top right': 45, 'to right top': 45, 'to bottom right': 135, 'to right bottom': 135, 'to bottom left': 225, 'to left bottom': 225, 'to top left': 315, 'to left top': 315 }; angle = mp[parts[0]] !== undefined ? mp[parts[0]] : 180; i = 1; }
-      } else if (!/^rgba?\(/.test(parts[0])) i = 1;
+      }
+      let size = 'farthest-corner', at = [50, 50];
+      if (kind === 'radial' && !/^rgba?\(/.test(parts[0])) {
+        i = 1; const sm = /(closest-side|closest-corner|farthest-side|farthest-corner)/.exec(parts[0]); if (sm) size = sm[1];
+        const am = /at\s+([\d.]+)%\s+([\d.]+)%/.exec(parts[0]); if (am) at = [parseFloat(am[1]), parseFloat(am[2])];
+        else if (/at\s/.test(parts[0]) && !/at\s+center/.test(parts[0])) warn('radial-gradient position other than percentages: centred');
+        if (/\d+px/.test(parts[0].replace(/at.*$/, ''))) warn('radial-gradient size in px: treated as farthest-corner');
+      }
       const rad = angle * Math.PI / 180, len = kind === 'linear' ? Math.abs(g.w * Math.sin(rad)) + Math.abs(g.h * Math.cos(rad)) : Math.max(g.w, g.h) / 2;
       let stops = parts.slice(i).map(p => { const mm = /^(rgba?\([^)]*\))\s*(.*)$/.exec(p); if (!mm) return null; const c = col(mm[1]); let pos = null; if (mm[2]) { pos = parseFloat(mm[2]); if (mm[2].includes('px')) pos = pos / len * 100; } return { c, pos }; }).filter(Boolean);
       if (stops.length < 2) return null;
       if (stops[0].pos === null) stops[0].pos = 0; if (stops[stops.length - 1].pos === null) stops[stops.length - 1].pos = 100;
       for (let k = 1; k < stops.length - 1; k++) if (stops[k].pos === null) { let a = k - 1, b = k + 1; while (stops[b].pos === null) b++; stops[k].pos = stops[a].pos + (stops[b].pos - stops[a].pos) * (k - a) / (b - a); }
-      return { kind, angle, stops };
+      return kind === 'radial' ? { kind, angle, stops, size, at } : { kind, angle, stops };
     };
     const clipOf = (cs, g, warn) => {
       const c = cs.clipPath; if (!c || c === 'none') return null;
@@ -135,7 +147,13 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
             rg.setStart(m, k.index); rg.setEnd(m, k.index + k[0].length); const rc = rg.getClientRects()[0];
             let sep = /\s/.test(txt.slice(pos, k.index)) ? ' ' : '';
             if (rc && flat) { if (lastTop !== null && rc.top > lastTop + rc.height * 0.5) { if (cRight - (prevRight + parseFloat(cs.fontSize) * 0.28 + rc.width) > -0.03 * cW) risky = true; sep = '\u000b'; wraps++; lines++; maxChars = Math.max(maxChars, cur); cur = 0; } lastTop = rc.top; prevRight = rc.right; maxRight = Math.max(maxRight, rc.right); }
-            out += sep + k[0]; cur += k[0].length + 1; pos = k.index + k[0].length;
+            let word = k[0];
+            if (flat && rg.getClientRects().length > 1) {   // one word on two lines: the browser broke it after a hyphen (close-|up); Slides would not
+              const top0 = rg.getClientRects()[0].top, cr = document.createRange();
+              for (let j = 1; j < word.length; j++) { cr.setStart(m, k.index + j); cr.setEnd(m, k.index + j + 1); const r2 = cr.getClientRects()[0];
+                if (r2 && r2.top > top0 + r2.height * 0.5) { word = word.slice(0, j) + '\u000b' + word.slice(j); wraps++; lines++; risky = true; lastTop = r2.top; prevRight = rg.getClientRects()[rg.getClientRects().length - 1].right; break; } }
+            }
+            out += sep + word; cur += k[0].length + 1; pos = k.index + k[0].length;
           }
           if (/\s$/.test(txt) && out) out += ' ';
           push(out, m.parentElement);
@@ -175,7 +193,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         const vis = k => bw[k] > 0 && bst[k] !== 'none' && bc[k].a > 0;
         const uniform = vis('l') && vis('r') && vis('t') && vis('b') && bw.l === bw.r && bw.l === bw.t && bw.l === bw.b;
         const rpct = cs.borderTopLeftRadius.includes('%'); const rv = parseFloat(cs.borderTopLeftRadius) || 0; const ell = rpct && rv >= 50 && Math.abs(g.w - g.h) > 1;
-        let radius = rpct ? Math.min(g.w, g.h) * Math.min(rv, 50) / 100 : rv;
+        let radius = Math.min(rpct ? Math.min(g.w, g.h) * Math.min(rv, 50) / 100 : rv, Math.min(g.w, g.h) / 2);   // CSS clamps a radius to half the box
         const gwarn = m => warns.push(el.tagName.toLowerCase() + ': ' + m); const grad = gradOf(cs, g, gwarn), cpath = clipOf(cs, g, gwarn), ov = ovOf(el, sec, R, g);
         if (ov.inheritR > radius) radius = ov.inheritR;
         const ovclip = ov.out.length ? ov.out : null;
@@ -183,7 +201,7 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
         if (el.tagName === 'svg') { const id = 'svg_' + (svgN++); el.setAttribute('data-gs', id); items.push({ type: 'svg', id, color: cs.color, ...g, op, qi: [...document.querySelectorAll('svg')].indexOf(el) }); continue; }
         if (el.tagName === 'IMG') {
           { const ibg = col(cs.backgroundColor); if (ibg && ibg.a > 0) items.push({ type: 'shape', ...g, op, radius, ell, fill: ibg, grad: null, stroke: null, shadow: null }); }
-          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, cpath, ovclip, ...g });
+          items.push({ type: el.dataset.clip ? 'clip' : 'img', src: decodeURI(el.src.replace('file://', '')), clip: el.dataset.clip || null, nw: el.naturalWidth, nh: el.naturalHeight, fit: cs.objectFit, radius, shadow: sh, op, pad, bw, cpath, ovclip, border: uniform && bw.l > 0 ? { c: col(cs.borderTopColor), w: bw.l } : null, ...g });
         } else {
           const bg = col(cs.backgroundColor); const hasText = textOwner.has(el);
           if ((bg && bg.a > 0) || grad || uniform || hasText) {
@@ -192,7 +210,9 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
             items.push(it);
           }
         }
-        if (!uniform) for (const k of ['l', 'r', 't', 'b']) if (vis(k)) {
+        if (!uniform && radius > 0.5) { for (const k of ['l', 'r', 't', 'b']) if (vis(k))   // rounded box: each side is a band that follows the corners (geomclip.band_poly)
+          items.push({ type: 'shape', ...g, op, radius: 0, ell: false, fill: bc[k], grad: null, cpath: null, ovclip, stroke: null, shadow: null, band: { k, bw: { l: vis('l') ? bw.l : 0, r: vis('r') ? bw.r : 0, t: vis('t') ? bw.t : 0, b: vis('b') ? bw.b : 0 }, r: radius } }); }
+        else if (!uniform) for (const k of ['l', 'r', 't', 'b']) if (vis(k)) {
           const hw = g.w / 2, hh = g.h / 2, o = bw[k] / 2;
           const seg = k === 'l' ? [-hw + o, -hh, -hw + o, hh] : k === 'r' ? [hw - o, -hh, hw - o, hh] : k === 't' ? [-hw, -hh + o, hw, -hh + o] : [-hw, hh - o, hw, hh - o];
           items.push({ type: 'line', x1: g.cx + seg[0], y1: g.cy + seg[1], x2: g.cx + seg[2], y2: g.cy + seg[3], c: bc[k], w: bw[k], dash: bst[k] === 'dashed' ? 'dash' : bst[k] === 'dotted' ? 'dot' : null, op });

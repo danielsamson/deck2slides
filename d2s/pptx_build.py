@@ -27,12 +27,19 @@ def color(parent, c, op=1.0):
     return sf
 def gradfill(parent, g, op=1.0):
     gf = E('a:gradFill', parent, rotWithShape='1'); gl = E('a:gsLst', gf)
-    for st in g['stops']:
+    stops = g['stops']
+    if g['kind'] == 'radial' and g.get('size') in ('closest-side', 'farthest-side'):
+        # PowerPoint/Slides run a radial fill from the centre to the box corners (CSS farthest-corner); a *-side gradient
+        # (centred) ends on the inscribed ellipse, 1/sqrt(2) of the way: compress the stops and hold the last colour beyond
+        k = 0.70710678; stops = [dict(st, pos=st['pos'] * k) for st in stops] + [dict(stops[-1], pos=100)]
+    for st in stops:
         gs = E('a:gs', gl, pos=int(round(max(0, min(100, st['pos'])) * 1000))); sc = E('a:srgbClr', gs, val=hexc(st['c']))
         a = st['c'].get('a', 1) * op
         if a < 0.999: E('a:alpha', sc, val=int(round(a * 100000)))
     if g['kind'] == 'linear': E('a:lin', gf, ang=int(round(((g['angle'] - 90) % 360) * 60000)), scaled='0')
-    else: pth = E('a:path', gf, path='circle'); E('a:fillToRect', pth, l=50000, t=50000, r=50000, b=50000)
+    else:
+        ax, ay = g.get('at') or (50, 50)
+        pth = E('a:path', gf, path='circle'); E('a:fillToRect', pth, l=int(ax * 1000), t=int(ay * 1000), r=int((100 - ax) * 1000), b=int((100 - ay) * 1000))
     return gf
 
 def shadow(spPr, sh, op=1.0):
@@ -311,7 +318,23 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
     ox, oy = (pad['l'] + bw['l'] - pad['r'] - bw['r']) / 2, (pad['t'] + bw['t'] - pad['b'] - bw['b']) / 2
     dx, dyy = rot_vec(ox, oy, rot); cx += dx; cy += dyy
     with Image.open(path) as im: nw, nh = im.size
-    fit = it.get('fit', 'fill'); radius = it.get('radius', 0)
+    fit = it.get('fit', 'fill'); outer_r = min(it.get('radius', 0), it['w'] / 2, it['h'] / 2)
+    # CSS clips an <img>'s content to the inner radius: the outer radius less border and padding on that side
+    radius = max(0.0, outer_r - max(bw.values()) - max(pad.values())) if outer_r > 0.5 else 0
+    bord = it.get('border')
+    if bord and bord.get('c') and bord['c']['a'] > 0:
+        # a border on the <img> itself: the outer box as a shape in the border colour behind the picture; it carries the shadow
+        b = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, emu(it['cx'] - it['w'] / 2), emu(it['cy'] - it['h'] / 2), max(1, emu(it['w'])), max(1, emu(it['h'])))
+        if abs(rot) > 0.01: b.rotation = rot
+        spPr = strip(b); bcust = geomclip.cust_for(dict(it, radius=outer_r, cpath=None)) if it.get('ovclip') else None
+        if bcust == 'empty': b._element.getparent().remove(b._element)
+        else:
+            geom(spPr, it['w'], it['h'], outer_r, False, bcust if isinstance(bcust, list) else None); color(spPr, bord['c'], it.get('op', 1)); ln = E('a:ln', spPr); E('a:noFill', ln)
+            if it.get('shadow'): shadow(spPr, it['shadow'], it.get('op', 1))
+            tb = b._element.find(qn('p:txBody'))
+            for chd in list(tb): tb.remove(chd)
+            E('a:bodyPr', tb); E('a:lstStyle', tb); E('a:p', tb); b.name = 'Picture border'
+        it = dict(it, shadow=None)
     if fit == 'contain': s = min(cw / nw, ch / nh); pw, ph = nw * s, nh * s
     else: pw, ph = cw, ch
     method = 'CENTER_CROP' if fit in ('cover', 'fill') and abs(1 - (pw / ph) / (nw / nh)) > 0.005 else 'CENTER_INSIDE'
@@ -332,10 +355,11 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
         sr = E('a:srcRect', None, l=int(emb[2][0] * 100000), t=int(emb[2][1] * 100000), r=int(emb[2][2] * 100000), b=int(emb[2][3] * 100000))
         bf = pic._element.find(qn('p:blipFill')); bf.find(qn('a:blip')).addnext(sr)
     if abs(rot) > 0.01: pic.rotation = rot
-    if abs(pw - it['w']) < 1 and abs(ph - it['h']) < 1: cust = geomclip.cust_for(it)
-    elif it.get('radius', 0) > 0.5 and abs(rot) < 0.01:      # contain: the picture is smaller than its element; only the element's rounded corners clip it (no preset rounding on the smaller picture)
-        radius = 0
-        ex, ey = it['cx'], it['cy']; cust = geomclip.cust_for(dict(it, cx=cx, cy=cy, w=pw, h=ph, radius=0, cpath=None, ell=False, ovclip=[dict(x0=ex - it['w'] / 2, y0=ey - it['h'] / 2, x1=ex + it['w'] / 2, y1=ey + it['h'] / 2, r=it['radius'])]))
+    if abs(pw - cw) < 1 and abs(ph - ch) < 1:                 # the picture fills its content box (fill/cover; border and padding inside the element)
+        cust = geomclip.cust_for(dict(it, cx=cx, cy=cy, w=pw, h=ph, radius=radius))
+    elif radius > 0.5 and abs(rot) < 0.01:      # contain: the picture is smaller than its content box; only the box's rounded corners clip it (no preset rounding on the smaller picture)
+        bx, by = cx, cy; r_in = radius; radius = 0
+        cust = geomclip.cust_for(dict(it, cx=cx, cy=cy, w=pw, h=ph, radius=0, cpath=None, ell=False, ovclip=(it.get('ovclip') or []) + [dict(x0=bx - cw / 2, y0=by - ch / 2, x1=bx + cw / 2, y1=by + ch / 2, r=r_in)]))
     else: cust = None
     if cust == 'empty': pic._element.getparent().remove(pic._element); return None
     if isinstance(cust, list) and emb and abs(rot) < 0.01:

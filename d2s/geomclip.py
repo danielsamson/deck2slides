@@ -48,8 +48,45 @@ def _bez_ellipse(cx, cy, rx, ry):
     return [[('M', cx + rx, cy), ('C', cx + rx, cy + k * ry, cx + k * rx, cy + ry, cx, cy + ry), ('C', cx - k * rx, cy + ry, cx - rx, cy + k * ry, cx - rx, cy),
              ('C', cx - rx, cy - k * ry, cx - k * rx, cy - ry, cx, cy - ry), ('C', cx + k * rx, cy - ry, cx + rx, cy - k * ry, cx + rx, cy), ('Z',)]]
 
+def band_poly(it):
+    """One side of a non-uniform border on a rounded box, as CSS paints it: the ring between the outer rounded box and the
+    inner one (inset by each side's width, radius less that width), cut where the sides meet (outer corner to inner corner)."""
+    b = it['band']; k, bw, r = b['k'], b['bw'], b['r']
+    x0, y0, x1, y1 = _box(it)
+    ring = rrect(x0, y0, x1, y1, r).difference(rrect(x0 + bw['l'], y0 + bw['t'], x1 - bw['r'], y1 - bw['b'], max(0.0, r - max(bw.values()))))
+    ix0, iy0, ix1, iy1 = x0 + bw['l'], y0 + bw['t'], x1 - bw['r'], y1 - bw['b']
+    # CSS splits each corner along the line from the outer corner to the inner corner; a side keeps the part of the ring on
+    # its own side of both its corner lines (a corner whose two widths are 0 has no line).
+    def half(px, py, qx, qy, ref):
+        dx, dy = qx - px, qy - py
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9: return None
+        n = (-dy, dx); L = 1e5; sgn = 1 if (ref[0] - px) * n[0] + (ref[1] - py) * n[1] >= 0 else -1
+        a, b = (px - dx * L, py - dy * L), (px + dx * L, py + dy * L)
+        return Polygon([a, b, (b[0] + sgn * n[0] * L, b[1] + sgn * n[1] * L), (a[0] + sgn * n[0] * L, a[1] + sgn * n[1] * L)]).buffer(0)
+    corners = {'tl': (x0, y0, ix0, iy0), 'tr': (x1, y0, ix1, iy0), 'bl': (x0, y1, ix0, iy1), 'br': (x1, y1, ix1, iy1)}
+    sides = {'t': (('tl', 'tr'), ((x0 + x1) / 2, y0)), 'b': (('bl', 'br'), ((x0 + x1) / 2, y1)),
+             'l': (('tl', 'bl'), (x0, (y0 + y1) / 2)), 'r': (('tr', 'br'), (x1, (y0 + y1) / 2))}
+    def wedge(j):
+        w = sbox(x0 - 1, y0 - 1, x1 + 1, y1 + 1)
+        for c in sides[j][0]:
+            hp = half(*corners[c], sides[j][1])
+            if hp is not None: w = w.intersection(hp)
+        return w
+    poly = ring.intersection(wedge(k))
+    # adjacent sides are settled by the corner lines; opposite sides (corner lines meeting beyond the box) split at the midline
+    opp = {'t': 'b', 'b': 't', 'l': 'r', 'r': 'l'}[k]
+    if bw[opp] > 0:
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        poly = poly.intersection({'t': sbox(x0 - 1, y0 - 1, x1 + 1, my), 'b': sbox(x0 - 1, my, x1 + 1, y1 + 1),
+                                  'l': sbox(x0 - 1, y0 - 1, mx, y1 + 1), 'r': sbox(mx, y0 - 1, x1 + 1, y1 + 1)}[k])
+    return poly
+
 def cust_for(it):
     """-> None (use the normal preset geometry) | 'empty' (item is fully clipped away) | list of sub-paths."""
+    if it.get('band'):
+        poly = band_poly(it)
+        for a in (it.get('ovclip') or []): poly = poly.intersection(rrect(a['x0'], a['y0'], a['x1'], a['y1'], a.get('r', 0)))
+        return (_subpaths(poly, it) or 'empty') if not poly.is_empty else 'empty'
     ov = it.get('ovclip'); cp = it.get('cpath'); rot = abs(it.get('rot', 0)) > 0.01
     if ov and not rot:
         base = item_poly(it); poly = base

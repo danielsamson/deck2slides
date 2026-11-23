@@ -41,10 +41,19 @@ def encode(frame_glob, in_fps, out, max_w, budget_kb, lossy=C.GIF_LOSSY):
     return dict(file=out, frames=n, size=[gw, gh], fps=round(fps, 2), kb=os.path.getsize(out) // 1024, fits=os.path.getsize(out) <= budget_kb * 1024)
 
 def both(frame_glob, in_fps, out_dir, name, max_w):
-    """Upload version (fits the connector: GIF_UPLOAD_KB) and HQ version (for replacing by hand in Slides: GIF_HQ_KB)."""
+    """Upload version (fits the connector: GIF_UPLOAD_KB) and HQ version (for replacing by hand in Slides: GIF_HQ_KB).
+    Cached: the same frames and settings give the same files, so a rebuild skips the (slow) encode."""
+    import glob, hashlib
     os.makedirs(os.path.join(out_dir, 'hq'), exist_ok=True)
+    h = hashlib.sha1(repr((in_fps, max_w, C.GIF_UPLOAD_KB, C.GIF_HQ_KB, C.GIF_LOSSY, C.GIF_LOSSY_HQ, C.GIF_MIN_W)).encode())
+    for f in sorted(glob.glob(frame_glob.replace('%05d', '*'))): h.update(open(f, 'rb').read())
+    keyf = os.path.join(out_dir, name + '.json'); key = h.hexdigest()
+    if os.path.exists(keyf):
+        c = json.load(open(keyf))
+        if c.get('key') == key and all(os.path.exists(c[k]['file']) for k in ('up', 'hq')): return c['up'], c['hq']
     hq = encode(frame_glob, in_fps, os.path.join(out_dir, 'hq', name + '.gif'), max_w, C.GIF_HQ_KB, C.GIF_LOSSY_HQ)
     up = encode(frame_glob, in_fps, os.path.join(out_dir, name + '.gif'), max_w, C.GIF_UPLOAD_KB)
+    json.dump(dict(key=key, up=up, hq=hq), open(keyf, 'w'))
     return up, hq
 
 def _desc(r): return '%dx%d %d frames %.4g fps %d KB' % (r['size'][0], r['size'][1], r['frames'], r['fps'], r['kb'])
