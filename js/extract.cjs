@@ -313,13 +313,16 @@ async function download(url) { const p = path.join(OUT, 'dl', require('crypto').
       }, { qi: it.qi, si, MAXP });
       if (!plan) continue;
       let x0 = Math.max(0, it.cx - it.w / 2), y0 = Math.max(0, it.cy - it.h / 2), x1 = Math.min(SLIDE_W, it.cx + it.w / 2), y1 = Math.min(SLIDE_H, it.cy + it.h / 2);
-      if ((x1 - x0) * (y1 - y0) > C_LOOP_FULL * SLIDE_W * SLIDE_H) {
-        // a big drawing: record the whole slide, so no edge where the GIF's baked background meets Slides' own drawing of it
-        // (a visible seam on soft glows). Text is made transparent: it stays native on top.
-        x0 = 0; y0 = 0; x1 = SLIDE_W; y1 = SLIDE_H;
-        await p4.evaluate(({ qi, si }) => { const svg = document.querySelectorAll('svg')[qi]; const sec = document.querySelectorAll('section')[si];
-          for (const e of sec.querySelectorAll('*')) if (!svg.contains(e)) { e.style.setProperty('color', 'transparent', 'important'); e.style.setProperty('-webkit-text-fill-color', 'transparent', 'important'); } }, { qi: it.qi, si });
-      }
+      // The slide's ground (everything painted before the drawing, text made transparent) is captured once as a full-slide
+      // picture placed under the GIF: soft backgrounds stay smooth PNG (GIF bands and streaks them), and the GIF's own baked
+      // background comes from the same render, so its edge does not show against Slides' own drawing of the glows.
+      await p4.evaluate(({ qi, si }) => { const svg = document.querySelectorAll('svg')[qi]; const sec = document.querySelectorAll('section')[si];
+        for (const e of sec.querySelectorAll('*')) if (!svg.contains(e)) { e.style.setProperty('color', 'transparent', 'important'); e.style.setProperty('-webkit-text-fill-color', 'transparent', 'important'); }
+        svg.style.setProperty('visibility', 'hidden', 'important'); }, { qi: it.qi, si });
+      const groundF = path.join(OUT, 'loops', it.id + '_ground.png'); fs.mkdirSync(path.dirname(groundF), { recursive: true });
+      await p4.screenshot({ path: groundF, clip: { x: 0, y: 0, width: SLIDE_W, height: SLIDE_H } });
+      await p4.evaluate(({ qi }) => { document.querySelectorAll('svg')[qi].style.removeProperty('visibility'); }, { qi: it.qi });
+      it.ground = groundF;
       const n = Math.max(2, Math.round(plan.P / 1000 * FPS)), dir = path.join(OUT, 'loops', it.id); fs.mkdirSync(dir, { recursive: true });
       for (let f = 0; f < n; f++) {
         await p4.evaluate(t => window.__d2sLoops.forEach(a => { a.currentTime = a._d2s0 + t; }), f * plan.P / n);

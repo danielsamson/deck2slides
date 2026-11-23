@@ -23,7 +23,7 @@ def _encode_once(frame_glob, in_fps, out, w, fps, lossy):
           "[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle") % (fps, w)
     raw = out + '.raw.gif'
     subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '%.4f' % in_fps, '-i', frame_glob, '-vf', vf, '-loop', '0', raw], check=True)
-    if shutil.which('gifsicle'): subprocess.run(['gifsicle', '-O3', '--lossy=%d' % lossy, raw, '-o', out], check=True); os.remove(raw)
+    if shutil.which('gifsicle'): subprocess.run(['gifsicle', '-O3'] + (['--lossy=%d' % lossy] if lossy else []) + [raw, '-o', out], check=True); os.remove(raw)
     else: os.replace(raw, out)
     return os.path.getsize(out)
 
@@ -86,5 +86,15 @@ def make_all(work, max_w=None):
                     r, hq = both(os.path.join(fdir, 'f_%05d.png'), fps, out, key, mw); done[it['src']] = (r, hq)
                     rep.append('slide %s: video loop (animated %s, %.4g fps) -> GIF %s; HQ %s' % (sl['id'], os.path.splitext(it['src'])[1], fps, _desc(r), _desc(hq)))
                 it['gif'], it['gif_hq'] = done[it['src']][0]['file'], done[it['src']][1]['file']
+    for sl in data:                      # a looping drawing's ground goes under it (full-slide picture, rendered by the browser)
+        items = sl['items']
+        for i, it in enumerate(list(items)):
+            if it.get('gif') and it.get('ground') and os.path.exists(it['ground']) and not it.get('_grounded'):
+                it['_grounded'] = True; k = items.index(it)
+                ground = dict(type='img', src=it['ground'], nw=1920, nh=1080, fit='fill', radius=0, shadow=None, op=1, pad=None, bw=None, cpath=None, ovclip=None, cx=960, cy=540, w=1920, h=1080, rot=0)
+                before = items[:k]; keep = [x for x in before if not (x['type'] == 'shape' and x.get('text')) and x['type'] not in ('line', 'link')]
+                lift = [x for x in before if x not in keep]          # text, lines and links stay above the ground
+                sl['items'] = keep + [ground] + lift + items[k:]; items = sl['items']
+                rep.append('slide %s: ground picture under the looping drawing (%d text boxes kept above it)' % (sl['id'], sum(1 for x in lift if x.get('text'))))
     json.dump(data, open(sj, 'w'), indent=1)
     return rep

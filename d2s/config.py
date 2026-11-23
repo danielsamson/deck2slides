@@ -59,8 +59,8 @@ SHADOW_INSET_PX = 1            # a picture's shadow shape is this much smaller o
 MAX_PIC_WIDTH_FACTOR = 2.0     # pictures are bundled at most this many times their on-slide width (connector size limit)
 GIF_UPLOAD_KB = 2800           # a looping GIF for the deck must fit one Drive connector call (about 3.1 MB of file, measured) with its bundle
 GIF_HQ_KB = 24000              # the HQ copy, replaced by hand in Slides (limit 50 MB; big GIFs stutter in Slides)
-GIF_LOSSY = 100                # gifsicle --lossy for the upload copy ...
-GIF_LOSSY_HQ = 40              # ... and for the HQ copy
+GIF_LOSSY = 40                 # gifsicle --lossy for the upload copy ...
+GIF_LOSSY_HQ = 0               # ... and for the HQ copy (0 = lossless LZW: --lossy streaks flat soft backgrounds)
 GIF_MIN_W = 480                # below this width the upload copy drops frames per second instead (down to half)
 GIF_LOOP_MAX_W = 960           # looping SVG drawings become GIFs at most this wide (blurred glows lose little; frames add up fast)
 GIF_VIDEO_MAX_W = 1200         # video loops (animated WebP) as GIFs: at most this wide ...
