@@ -15,7 +15,9 @@ def bundle(*keys):
 def test_matches_by_tag_not_position():
     reqs, report, problems = gslides.swap_plan(MAN, deck(), [bundle('ima'), bundle('imvid')])
     assert not problems
-    by_id = {r['replaceImage']['imageObjectId']: r['replaceImage'] for r in reqs}
+    by_id = {r['replaceImage']['imageObjectId']: r['replaceImage'] for r in reqs if 'replaceImage' in r}
+    alt = [r['updatePageElementAltText'] for r in reqs if 'updatePageElementAltText' in r]
+    assert {a['objectId'] for a in alt} == {'p1_i2', 'p9_i3'} and all(a['title'] for a in alt)   # tag and alt text restored after each replace
     assert by_id['p9_i3']['url'] == 'https://x/imvid'          # the video goes on its own placeholder, not the neighbour p9_i9
     assert 'p9_i9' not in by_id and by_id['p9_i3']['imageReplaceMethod'] == 'CENTER_CROP'
 
@@ -25,11 +27,11 @@ def test_reports_missing_and_unused():
 
 def test_unwrap_plain_presentation():
     reqs, _, problems = gslides.swap_plan(MAN, deck()['content'], [bundle('ima')['content'], bundle('imvid')])
-    assert len(reqs) == 2 and not problems
+    assert len([r for r in reqs if 'replaceImage' in r]) == 2 and not problems
 
 def test_tag_in_title_alt_text_in_description():
     d = {'content': {'revisionId': 'r', 'slides': [{'pageElements': [
         {'objectId': 'p9_i3', 'title': 'nightIdeaB.0.imvid', 'description': 'Story night in the room: friends on the sofa'},
         {'objectId': 'p1_i2', 'title': 'cover.0.ima', 'description': ''}]}]}}
     reqs, _, problems = gslides.swap_plan(MAN, d, [bundle('ima', 'imvid')])
-    assert not problems and {r['replaceImage']['imageObjectId'] for r in reqs} == {'p9_i3', 'p1_i2'}
+    assert not problems and {r['replaceImage']['imageObjectId'] for r in reqs if 'replaceImage' in r} == {'p9_i3', 'p1_i2'}

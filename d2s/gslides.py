@@ -66,6 +66,8 @@ def swap_plan(manifest, deck_read, bundle_reads):
         if not url: problems.append('no bundle picture for key %s (placeholder %s)' % (el['key'], el['tag'])); continue
         used.add(el['key'])
         reqs.append({'replaceImage': {'imageObjectId': oid, 'url': url, 'imageReplaceMethod': el['method']}})
+        # replaceImage clears the element's title and description (measured): put the tag and the alt text back
+        reqs.append({'updatePageElementAltText': {'objectId': oid, 'title': el['tag'], 'description': el.get('alt', '')}})
         report.append('%-34s -> %-8s %s%s' % (el['tag'], oid, el['method'], '  (GIF)' if el.get('gif') else ''))
     for k in key_to_url:
         if k not in used: problems.append('bundle picture %s is not used by any placeholder' % k)

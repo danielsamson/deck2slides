@@ -77,6 +77,13 @@ glass panels and soft radial glows. Each row was seen wrong in Google, fixed, an
 | Sharp background through glass panels | `backdrop-filter` has no equivalent | panel captured with its backdrop; text, mask and shadow native |
 | Animations frozen on one frame | CSS loops and animated WebP | GIFs (next section) |
 
+Also carried over since (checked in Google on v8): **speaker notes** (`<aside>` -> PPTX notes page -> Slides speaker notes); **alt text**
+(`<img alt>`, `<svg aria-label>` stay in the picture's description; the swap tag moved to the title, so the two no longer collide). `replaceImage`
+**clears both** title and description (measured), so `d2s.py swap` follows each replace with `updatePageElementAltText` to put them back. Shapes
+under a full-slide ground picture are dropped (they were invisible but cluttered editing). `convert` **warns when a face is not a Google Fonts
+family** (`fonts.in_google_fonts`: real families are served from `fonts.gstatic.com/s/`; Helvetica Neue only gets a stand-in from `/l/`), because
+Slides substitutes such a font when the deck opens.
+
 Process lessons: check in Google at full size and boosted contrast, never on thumbnails (a pink GIF band was missed that way); match pictures to
 placeholders by asset tag, never by position (a GIF went onto the wrong picture); a quick build without GIFs (`D2S_LOOPS=0`) takes 1.5 minutes,
 a full one 6-10.
@@ -270,8 +277,9 @@ heights 0.9 and 1.5, in 1-px steps, so about 0.5 px noise).
 3. `read_presentation` of the deck with `fields` = `gslides.READ_ELEMENTS_MASK`, and of each bundle with `READ_IMAGES_MASK` (bundle links last
    about 30 minutes). Save each result **as returned** to a file (`deck.json`, `b1.json`, ...).
 4. `d2s.py swap <work> deck.json b1.json b2.json ...` matches every placeholder to its bundle picture **by asset tag** and writes
-   `<work>/swap.json` (`requests` + `writeControl`). It exits with a list of problems if any placeholder or bundle picture is unmatched: do not
-   send a partial plan. Send `requests` in one `update_presentation` with that `writeControl`.
+   `<work>/swap.json` (`requests` + `writeControl`): one `replaceImage` per placeholder, each followed by `updatePageElementAltText` (the replace
+   clears title and alt text). It exits with a list of problems if any placeholder or bundle picture is unmatched: do not send a partial plan.
+   Send `requests` in one `update_presentation` with that `writeControl`.
 5. Check in Google, not by eye on thumbnails: PDF export through Drive `download_file_content` (`exportMimeType: application/pdf`) + `pdf2png`,
    or `read_slide_page_thumbnail` with `WIDTH2000_PX`; look at crops with boosted contrast for soft areas (glows, GIF edges).
 6. `d2s.py report <work> <dir> [--ref noimg|full] [--ignore-pictures] [--diffs <outdir>]`.

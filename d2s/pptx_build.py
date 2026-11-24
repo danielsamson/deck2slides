@@ -380,7 +380,7 @@ def add_picture_mask(slide, it, path, slide_id, n, embed_scale=None):
         blip = pic._element.find('.//' + qn('a:blip')); E('a:alphaModFix', blip, amt=int(round(it['op'] * 100000)))
     # the tag (slide.n.assetkey, used to swap pictures in) goes in the title; the description stays the picture's alt text
     tag = '%s.%d.%s' % (slide_id, n, key); cnv = pic._element.nvPicPr.cNvPr; cnv.set('title', tag); cnv.set('descr', it.get('alt') or ''); pic.name = tag
-    if not emb: ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
+    if not emb: ELEMENTS.append(dict(tag=tag, key=key, slide=slide_id, method=method, alt=it.get('alt') or '', transparency=round(1 - it.get('op', 1), 3), w=pw, h=ph, clip=it.get('clip'), gif=path.lower().endswith('.gif')))
     return pic
 
 def add_line(slide, it):
